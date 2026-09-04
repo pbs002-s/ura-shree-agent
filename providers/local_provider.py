@@ -67,6 +67,7 @@ class LocalProvider(ChatProvider):
 
         checkpoints = sorted(Path("checkpoints").glob("*.pt")) if Path("checkpoints").exists() else []
         labels = {
+            "shree_chat_best.pt": "Shree Chat (SFT fine-tuned)",
             "coding_best.pt": "Shree coding (fine-tuned)",
             "best.pt": "Shree base (best validation)",
             "last.pt": "Shree base (latest step)",
