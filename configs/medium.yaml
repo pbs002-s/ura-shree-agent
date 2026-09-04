@@ -1,0 +1,50 @@
+# ==============================================================================
+# URA-Shree Model & Training Configuration: medium (~85M parameters)
+# Optimized for high-throughput scaling on consumer 8GB - 16GB GPUs
+# ==============================================================================
+
+model:
+  name: "ura-shree-medium"
+  vocab_size: 4096           # Byte-Level BPE vocabulary, trained on the source tree
+  max_seq_len: 2048          # Extended context window length
+  embed_dim: 768             # Hidden dimension d_model
+  num_layers: 12             # Number of Transformer blocks
+  num_heads: 12              # Number of attention heads (head_dim = 768 / 12 = 64)
+  intermediate_dim: 3072     # FFN inner dimension (4 * d_model)
+  dropout: 0.1               # Regularization dropout
+  tie_weights: true          # Tie token embedding and LM head
+  norm_eps: 1e-5             # Pre-LN RMSNorm epsilon
+  bias: false                # No bias terms, matching modern decoder designs
+
+  # --- Architecture ---------------------------------------------------------
+  # RoPE encodes position as a rotation inside attention, so no position table
+  # is allocated at all and the model degrades gracefully past its trained
+  # context length. SwiGLU is the better quality-per-FLOP feed-forward, with the
+  # hidden width scaled by 2/3 to keep the parameter count comparable. Grouped
+  # query attention shares key/value heads across query heads, which shrinks the
+  # KV cache by the same factor and is what makes long contexts affordable.
+  pos_encoding: "rope"       # "rope" | "learned"
+  rope_theta: 10000.0
+  ffn: "swiglu"              # "swiglu" | "gelu"
+  num_kv_heads: 4            # 12 query heads share 4 KV heads (3:1)
+
+training:
+  batch_size: 8              # Micro batch size
+  grad_accum_steps: 8        # Effective batch size = 8 * 8 = 64 sequences
+  learning_rate: 3.0e-4      # Peak learning rate with cosine decay
+  min_learning_rate: 3.0e-5  # Floor learning rate
+  weight_decay: 0.1          # Decoupled AdamW decay (2D weights only)
+  warmup_steps: 500          # Linear warmup schedule
+  max_steps: 15000           # Total training steps
+  eval_interval: 500         # Validation frequency
+  eval_iters: 100            # Batches evaluated per validation pass
+  save_interval: 1000        # Atomic checkpointing frequency
+  grad_clip: 1.0             # Gradient norm ceiling
+  mixed_precision: true      # Native BF16 / FP16 mixed precision
+  device: "cuda"
+  seed: 42
+
+checkpoint:
+  dir: "checkpoints"
+  save_best: true
+  keep_last: 5

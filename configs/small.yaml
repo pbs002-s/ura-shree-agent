@@ -1,0 +1,50 @@
+# ==============================================================================
+# URA-Shree Model & Training Configuration: small (~15M - 25M parameters)
+# Optimized for local training & fast experimentation on NVIDIA RTX 4060 (8GB)
+# ==============================================================================
+
+model:
+  name: "ura-shree-small"
+  vocab_size: 4096           # Byte-Level BPE vocabulary, trained on the source tree
+  max_seq_len: 1024          # Context window length (tokens)
+  embed_dim: 384             # Hidden dimension d_model
+  num_layers: 6              # Number of Transformer blocks
+  num_heads: 6               # Number of attention heads (head_dim = 384 / 6 = 64)
+  intermediate_dim: 1536     # FFN inner dimension (4 * d_model)
+  dropout: 0.1               # Dropout rate
+  tie_weights: true          # Tie token embedding and LM head weights
+  norm_eps: 1e-5             # LayerNorm / RMSNorm epsilon
+  bias: false                # No bias terms, matching modern decoder designs
+
+  # --- Architecture ---------------------------------------------------------
+  # RoPE encodes position as a rotation inside attention, so no position table
+  # is allocated at all and the model degrades gracefully past its trained
+  # context length. SwiGLU is the better quality-per-FLOP feed-forward, with the
+  # hidden width scaled by 2/3 to keep the parameter count comparable. Grouped
+  # query attention shares key/value heads across query heads, which shrinks the
+  # KV cache by the same factor and is what makes long contexts affordable.
+  pos_encoding: "rope"       # "rope" | "learned"
+  rope_theta: 10000.0
+  ffn: "swiglu"              # "swiglu" | "gelu"
+  num_kv_heads: 3            # 6 query heads share 3 KV heads (2:1)
+
+training:
+  batch_size: 16             # Micro batch size per forward pass
+  grad_accum_steps: 4        # Effective batch size = 16 * 4 = 64
+  learning_rate: 6.0e-4      # Peak learning rate
+  min_learning_rate: 6.0e-5  # Minimum learning rate for cosine decay
+  weight_decay: 0.1          # AdamW weight decay
+  warmup_steps: 60           # Linear warmup steps
+  max_steps: 400             # Total optimizer steps
+  eval_interval: 20          # Evaluate every N steps
+  eval_iters: 20             # Batches per evaluation pass
+  save_interval: 100         # Checkpoint saving frequency
+  grad_clip: 1.0             # Gradient clipping threshold
+  mixed_precision: true      # Enable PyTorch amp autocast (FP16 / BF16)
+  device: "cuda"             # auto, cuda, or cpu
+  seed: 42
+
+checkpoint:
+  dir: "checkpoints"
+  save_best: true
+  keep_last: 3

@@ -1,0 +1,45 @@
+# ==============================================================================
+# URA-Shree Model & Training Configuration: large (~350M parameters)
+# Designed for multi-turn reasoning and complex software synthesis
+# ==============================================================================
+
+model:
+  name: "ura-shree-large"
+  vocab_size: 16384          # Extended BPE Code Vocabulary
+  max_seq_len: 2048          # Full context window
+  embed_dim: 1024            # Hidden dimension d_model
+  num_layers: 24             # Deep Transformer stack
+  num_heads: 16              # Multi-head attention (head_dim = 64)
+  intermediate_dim: 4096     # Wide feed-forward expansion
+  dropout: 0.1
+  tie_weights: true          # Memory-efficient weight tying
+  norm_eps: 1e-5
+  bias: false
+
+  # --- Architecture ---------------------------------------------------------
+  # See configs/small.yaml for why these are the defaults for new runs.
+  pos_encoding: "rope"
+  rope_theta: 10000.0
+  ffn: "swiglu"
+  num_kv_heads: 4            # 16 query heads share 4 KV heads (4:1)
+
+training:
+  batch_size: 4              # Micro batch size to fit GPU VRAM
+  grad_accum_steps: 16       # Effective batch size = 4 * 16 = 64
+  learning_rate: 2.0e-4      # Stable learning rate for deep architecture
+  min_learning_rate: 2.0e-5  # Cosine schedule floor
+  weight_decay: 0.1          # AdamW decoupled regularization
+  warmup_steps: 1000         # Extended warmup for deep training stability
+  max_steps: 30000           # Full training schedule
+  eval_interval: 1000
+  eval_iters: 150
+  save_interval: 2000
+  grad_clip: 1.0
+  mixed_precision: true      # Mandatory BF16 on Ada Lovelace (RTX 40-series)
+  device: "cuda"
+  seed: 42
+
+checkpoint:
+  dir: "checkpoints"
+  save_best: true
+  keep_last: 5

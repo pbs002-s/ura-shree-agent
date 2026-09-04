@@ -1,0 +1,67 @@
+# Python build artifacts, anchored to the repository root
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+/env/
+/ENV/
+
+# Model weights and compiled datasets. Regenerate with:
+#   python -m tokenizer.train_tokenizer && python -m data.prepare_dataset
+#   python -m training.train --config configs/small.yaml
+# The trained tokenizer IS committed, so checkpoints load without retraining it.
+checkpoints/*.pt
+checkpoints/*.pth
+!checkpoints/.gitkeep
+datasets/processed/
+*.bin
+
+# Runtime state written by the agent, not source
+checkpoints/*.db
+checkpoints/*.jsonl
+
+# Third-party skill packs kept locally; not this project's to redistribute
+skills/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+.env.local
+
+# URA-Shree runtime state
+# API keys live here. Never commit this directory.
+.shree/
+# Workspace history: content-addressed snapshots, can be large.
+.timemachine/
+workspace/uploads/
