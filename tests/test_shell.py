@@ -34,7 +34,8 @@ def test_runs_a_command_and_captures_output(session):
 def test_working_directory_persists_between_commands(session):
     session.run("cd sub")
     result = session.run("$PWD.Path" if WINDOWS else "pwd")
-    assert result["cwd"] == "sub", result
+    # The prompt path is rooted at the workspace directory name, not at ".".
+    assert result["cwd"].endswith("/sub"), result
 
 
 def test_environment_persists_between_commands(session):
