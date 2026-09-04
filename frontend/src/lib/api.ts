@@ -50,11 +50,29 @@ export const api = {
   selectModel: (provider: string, model: string) =>
     post<AppSettings>('/api/providers/select', { provider, model }),
 
-  tree: () => request<{ tree: TreeNode; truncated: boolean }>('/api/tree'),
+  tree: () => request<{ tree: TreeNode | null; truncated: boolean; workspace?: string | null }>('/api/tree'),
   readFile: (path: string) =>
     request<{ content: string; path: string; total_lines: number }>(
       `/api/file?path=${encodeURIComponent(path)}`),
   writeFile: (path: string, content: string) => post('/api/file', { path, content }),
+  deleteFile: (path: string) =>
+    request<{ ok: boolean; deleted: string }>(`/api/file?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+  selectWorkspace: (path: string) => post<{ ok: boolean; workspace: string | null }>('/api/workspace/select', { path }),
+  currentWorkspace: () => request<{ workspace: string | null }>('/api/workspace/current'),
+  browseWorkspace: () => post<{ ok: boolean; cancelled?: boolean; workspace: string | null }>('/api/workspace/browse', {}),
+  browseDirectory: () => post<{ ok: boolean; cancelled?: boolean; path: string | null }>('/api/browse-directory', {}),
+
+  skills: () => request<import('../types').Skill[]>('/api/skills'),
+  addSkill: (name: string, description: string, prompt: string) =>
+    post<import('../types').Skill>('/api/skills', { name, description, prompt }),
+  toggleSkill: (skillId: string, enabled?: boolean) =>
+    request<import('../types').Skill>(`/api/skills/${skillId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  deleteSkill: (skillId: string) => request<{ ok: boolean }>(`/api/skills/${skillId}`, { method: 'DELETE' }),
+
   upload: (targetDir: string, files: { path: string; content_base64: string }[]) =>
     post<{ written: { path: string; bytes: number }[]; rejected: { path: string; reason: string }[]; count: number }>(
       '/api/upload', { target_dir: targetDir, files }),

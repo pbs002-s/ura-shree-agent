@@ -133,14 +133,24 @@ export interface SnapshotDiff {
   files: DiffFile[]
 }
 
+export interface Skill {
+  id: string
+  name: string
+  description: string
+  prompt: string
+  enabled: boolean
+  built_in?: boolean
+}
+
 export interface ToolRun {
   id: string
   name: string
   arguments: Record<string, unknown>
   mutating: boolean
-  status: 'running' | 'ok' | 'failed'
+  status: 'running' | 'ok' | 'failed' | 'awaiting_approval'
   text: string
   data: Record<string, unknown>
+  needs_approval?: boolean
 }
 
 export type BlockKind = 'text' | 'thinking' | 'tool' | 'error'
