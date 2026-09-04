@@ -59,9 +59,14 @@ frontend/node_modules/
 frontend/dist/
 .env.local
 
+# Ollama model blobs pulled by `ollama create -f Modelfile`. Gigabytes of
+# weights that belong in the Ollama store, not in git history.
+blobs/
+
 # URA-Shree runtime state
 # API keys live here. Never commit this directory.
 .shree/
 # Workspace history: content-addressed snapshots, can be large.
 .timemachine/
-workspace/uploads/
+# The agent's default working directory. Scratch space, never source.
+workspace/
