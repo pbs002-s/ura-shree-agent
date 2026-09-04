@@ -22,8 +22,11 @@ agent, the tools and the interface are the same either way.
 | **Tokenizer** | Byte-level BPE trained on this repository's own source, 4096 tokens, lossless |
 | **Providers** | Anthropic, OpenAI, Google, Groq, OpenRouter, DeepSeek, Mistral, xAI, Together, Fireworks, Cerebras, Ollama, LM Studio, or any OpenAI-compatible endpoint |
 | **Agent** | A real tool-calling loop: read, edit, search, run commands, index symbols, remember decisions |
+| **Approval** | Every write is a decision you make, shown with the path it is about to touch |
+| **Skills** | Named blocks of standing directives, toggled at will, that shape how the agent works |
 | **Terminal** | A persistent shell. `cd`, environment variables and activated virtualenvs survive between commands |
 | **Time Machine** | Content-addressed snapshots of the whole workspace, with branch, diff and restore |
+| **Distillation** | Turn a local Ollama teacher into training data for the from-scratch checkpoint, with no hosted API in the loop |
 | **Interface** | React and TypeScript, light and dark themes, streaming replies, no dependencies beyond React |
 
 ---
@@ -45,15 +48,79 @@ That builds the interface and serves everything on <http://127.0.0.1:8000>.
 
 To use a hosted model: open **Settings**, choose a provider, paste your key,
 press **Scan available models**, and pick one. The scan calls the provider's
-own model listing, so you get exactly what your account can reach rather than a
-hard-coded list. Keys are stored in `.shree/settings.json`, which is gitignored,
-and the API only ever returns a masked preview of them.
+own model listing, so you get exactly what your account can reach rather than
+a hard-coded list. Keys are stored in `.shree/settings.json`, which is
+gitignored, and the API only ever returns a masked preview of them.
 
 To point the agent at a different project:
 
 ```powershell
 python scripts/launch.py --workspace ../my-project
 ```
+
+or press **Open Folder** in the files panel and pick one from your own file
+explorer, at any time, without restarting.
+
+---
+
+## Documentation
+
+| Document | Covers |
+| :--- | :--- |
+| [Architecture](docs/architecture.md) | How the four layers fit together, the provider seam, the request lifecycle, where state lives |
+| [The agent](docs/agent.md) | The loop, the tools, approval, the system prompt, skills |
+| [API](docs/api.md) | Every HTTP route and both websocket protocols |
+| [Model](docs/model.md) | Architecture, tokenizer, the fast decode path, benchmarks |
+| [Training](docs/training.md) | Training from scratch, the distillation pipeline, the Ollama persona |
+| [Configuration](docs/configuration.md) | Flags, environment, provider keys, what gets written where |
+
+---
+
+## Two modes
+
+The agent runs with or without a project folder.
+
+**With a workspace**, it has the full toolkit - read, write, edit, search, run
+commands, index symbols, git - along with the file explorer, the terminal and
+the Time Machine. Every mutating call is approved before it runs and
+snapshotted before it lands.
+
+**With no folder open**, it is an ordinary assistant. There is no toolkit, no
+tool specification is sent to the model, and the system prompt drops its tool
+section entirely rather than describing tools that are not there. Ask it to
+save a file and it tells you to open a folder first.
+
+The default workspace is `./workspace` rather than the repository, so a first
+run cannot edit the engine by accident. Switching is a runtime operation: the
+filesystem tool, git tool, shell, indexer and Time Machine are all rebuilt
+against the new root.
+
+---
+
+## Approval
+
+`auto_approve` is off by default. When the agent wants to write, edit or run
+something that changes the workspace, the tool card in the chat becomes a
+prompt showing the path in question, and the run pauses until you answer.
+
+Denial, a timeout, stopping the turn and resetting the conversation all resolve
+the same way: the tool does not run, and the model is told so in the tool
+result rather than being left to wonder why nothing happened.
+
+The card names the file because "allow `write_file`?" is not a question anyone
+can answer.
+
+---
+
+## Skills
+
+A skill is a named block of standing directives - a UI/UX brief, a security
+checklist, an architecture stance - appended to the system prompt while it is
+enabled. Four ship enabled; add your own from the Skills panel.
+
+They are stored in `.shree/skills.json`, and built-ins are merged back in on
+load, so a skills file written by an older version never silently loses the
+ones added since.
 
 ---
 
@@ -86,72 +153,6 @@ python -c "from agent.timemachine import TimeMachine; print(TimeMachine('.').tim
 
 ---
 
-## Performance
-
-Measured on an RTX 4060 Laptop GPU (8 GB), 8 physical cores, with
-`python scripts/benchmark.py`.
-
-| | Before | After | What changed |
-| :--- | ---: | ---: | :--- |
-| Training throughput | 18,837 tok/s | **116,315 tok/s** | fused SDPA, fused RMSNorm |
-| Generation, end to end | 197 tok/s | **742 tok/s** | graph decode plus a cheaper sampling path |
-| Decode step, GPU | 10.1 ms | **1.5-2.0 ms** | CUDA graph replay |
-| Decode, CPU, 512-token prompt | 7.4 tok/s | **65.4 tok/s** | KV cache |
-| Tokenizer compression | 1.57 chars/token | **3.19 chars/token** | 4096-token vocabulary trained on real source |
-| KV cache at full context | 18.9 MB | **4.7 MB** | grouped-query attention, bfloat16 |
-| Model quality | 5.06 bits/char | **2.05 bits/char** | see below |
-
-End-to-end generation is the median of five 200-token runs. The decode-step
-figure is a range because this is a laptop GPU and its clocks move: an isolated
-tight loop reaches 0.67 ms, a full benchmark pass sits nearer 2 ms. The ratio
-between eager and graph decode holds at roughly 4-7x either way. Re-run
-`scripts/benchmark.py` rather than trusting these numbers on your hardware.
-
-Model quality is compared in bits per character, not loss, because the
-tokenizer changed underneath it. Per-token loss falls automatically when the
-vocabulary shrinks, so it would flatter the new model for the wrong reason.
-`loss / ln(2) / chars_per_token` normalises that away: 5.5042 at 1.57 chars per
-token against 4.5325 at 3.19.
-
-### Why decoding was slow, and what fixed it
-
-Profiling the decode loop showed roughly 180 kernel launches per token, about
-0.5 ms of actual GPU work, and about 10 ms of wall time. The arithmetic was
-never the bottleneck - the CPU cost of submitting it was. A large model hides
-that behind real work; an 11M-parameter one cannot.
-
-Three changes fixed it:
-
-1. **A static KV cache.** The ordinary cache grows a column per step, so every
-   step has new shapes, which defeats both graph capture and `torch.compile`.
-   The static cache is allocated once at full context length and new keys and
-   values are written in place at a position held in a device tensor.
-2. **CUDA graph capture.** With shapes fixed, one decode step is recorded once
-   and replayed, submitting the whole step as a single operation.
-3. **A cheaper sampling path.** Once the model step was fast, the Python around
-   it dominated. Nucleus filtering now runs inside the top-k candidate set
-   rather than sorting the whole vocabulary, and the token history is
-   preallocated instead of grown with `torch.cat` on every token. That alone
-   took end-to-end generation from 197 to 742 tok/s.
-
-Output is bit-identical to the eager path; `tests/test_fast_decode.py` asserts
-that on three architecture variants (learned positions, RoPE, and RoPE with
-grouped-query attention and SwiGLU). See `inference/fast_decode.py`.
-
-### Memory
-
-- Weights load straight to the device in the compute dtype, so a float32 copy
-  never exists in host RAM. `mmap` keeps the checkpoint off the heap while the
-  state dict is copied.
-- bfloat16 on Ampere and newer, float16 on older CUDA cards, float32 on CPU.
-- `--quantize` applies dynamic int8 to the linear layers on CPU, roughly four
-  times less resident weight memory.
-- Threads are pinned to physical cores. PyTorch's default of one thread per
-  logical core oversubscribes a hyperthreaded laptop and makes small GEMMs
-  slower.
-
----
-
 ## The agent
 
 The loop is in `agent/loop.py` and it is small on purpose: send the
@@ -181,6 +182,40 @@ remember to make its work reversible.
 the preamble, prefer a list or a code block over a paragraph, no filler, no
 emoji. Un-steered API models pad; this is what stops that.
 
+**Reasoning** is normalised before it reaches the interface. Some models return
+their chain of thought in a separate field; others inline it into the answer
+inside `<think>` tags. Both become `thinking` events, rendered as a collapsed
+card, so a long chain of thought never buries the answer.
+
+Full detail in [docs/agent.md](docs/agent.md).
+
+---
+
+## Performance
+
+Measured on an RTX 4060 Laptop GPU (8 GB), 8 physical cores, with
+`python scripts/benchmark.py`.
+
+| | Before | After | What changed |
+| :--- | ---: | ---: | :--- |
+| Training throughput | 18,837 tok/s | **116,315 tok/s** | fused SDPA, fused RMSNorm |
+| Generation, end to end | 197 tok/s | **742 tok/s** | graph decode plus a cheaper sampling path |
+| Decode step, GPU | 10.1 ms | **1.5-2.0 ms** | CUDA graph replay |
+| Decode, CPU, 512-token prompt | 7.4 tok/s | **65.4 tok/s** | KV cache |
+| Tokenizer compression | 1.57 chars/token | **3.19 chars/token** | 4096-token vocabulary trained on real source |
+| KV cache at full context | 18.9 MB | **4.7 MB** | grouped-query attention, bfloat16 |
+| Model quality | 5.06 bits/char | **2.05 bits/char** | bits per character, not loss - the tokenizer changed underneath it |
+
+Profiling the decode loop showed roughly 180 kernel launches per token, about
+0.5 ms of actual GPU work, and about 10 ms of wall time. The arithmetic was
+never the bottleneck - the CPU cost of submitting it was. A static KV cache,
+CUDA graph capture and a cheaper sampling path fixed it, and the output stays
+bit-identical to the eager path; `tests/test_fast_decode.py` asserts that on
+three architecture variants.
+
+The full account, including why bits per character rather than loss, is in
+[docs/model.md](docs/model.md).
+
 ---
 
 ## Training your own checkpoint
@@ -198,9 +233,25 @@ use RoPE, SwiGLU and grouped-query attention. Checkpoints saved before those
 options existed still load: the defaults reproduce the original architecture
 exactly, and the architecture is read from the checkpoint's own config.
 
-The honest limit is data. The corpus is this repository plus a seed set - about
-320,000 tokens. An 11M-parameter model wants a few hundred million. Point
-`data/source_corpus.py` at a larger tree to change that.
+A model trained on source code continues source code. Asked a question, it
+writes a plausible function, because that is what follows a line of text in its
+training data. `scripts/distill_and_train.py` fixes the shape of the problem
+without buying data - it prompts a local Ollama teacher, caches the replies,
+formats them into the ChatML the model already understands, tokenises them with
+the project's own BPE, and fine-tunes on top of the base checkpoint:
+
+```powershell
+ollama pull qwen3.5:0.8b
+python scripts/distill_and_train.py --count 25 --steps 60
+```
+
+No hosted API is called and no third-party weights are shipped - only the
+teacher's own text, which is what keeps the result distributable. See
+[docs/training.md](docs/training.md).
+
+The honest limit is still data. The base corpus is this repository plus a seed
+set - about 320,000 tokens, where an 11M-parameter model wants a few hundred
+million. Point `data/source_corpus.py` at a larger tree to change that.
 
 ---
 
@@ -212,13 +263,14 @@ providers/    catalogue, base types, HTTP providers, local provider
 model/        config, embeddings, attention, transformer blocks, the model
 inference/    engine, runtime tuning, CUDA graph decoder, chat CLI
 tools/        sandboxed filesystem, persistent shell, git
-server/       FastAPI app and settings storage
+server/       FastAPI app, settings storage, skills registry
 training/     training loops, checkpoints, evaluation
 tokenizer/    byte-level BPE, vocabulary, trainer
 data/         corpus builders, dataset preparation, preprocessing
 frontend/     React interface
-scripts/      launch, benchmark, hardware probe
-tests/        104 tests
+scripts/      launch, benchmark, hardware probe, distillation, folder picker
+docs/         architecture, agent, API, model, training, configuration
+tests/        101 tests
 ```
 
 ---
@@ -244,6 +296,7 @@ the full HTTP and WebSocket API.
 
 - Filesystem tools resolve every path and refuse anything outside the workspace.
 - Uploads refuse executables, path traversal, and anything over 8 MB.
+- Mutating tools require approval by default.
 - A short list of unrecoverable shell commands is refused outright. This is not
   a sandbox; the shell runs with your permissions. Point `--workspace` at what
   you intend the agent to touch.
