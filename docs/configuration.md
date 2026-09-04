@@ -1,0 +1,78 @@
+# Configuration
+
+## Launching
+
+```powershell
+python scripts/launch.py                       # build the frontend, serve on 127.0.0.1:8000
+python scripts/launch.py --workspace ../app    # point the agent at another project
+python scripts/launch.py --dev                 # Vite dev server on 5173, hot reload
+python scripts/launch.py --no-build            # serve the existing bundle as-is
+python scripts/launch.py --host 0.0.0.0 --port 9000
+```
+
+| Flag | Default | Meaning |
+| :--- | :--- | :--- |
+| `--workspace` | `./workspace` | Directory the agent works in |
+| `--host` | `127.0.0.1` | Bind address |
+| `--port` | `8000` | Port |
+| `--dev` | off | Run Vite alongside for hot reload |
+| `--no-build` | off | Skip the frontend build |
+
+## Environment
+
+| Variable | Effect |
+| :--- | :--- |
+| `SHREE_WORKSPACE` | Initial workspace root. Set by the launcher from `--workspace` |
+| `SHREE_DEV` | When the workspace is the repository itself, show the framework directories in the explorer instead of hiding them |
+
+The workspace defaults to `./workspace` rather than the repository, so a first
+run cannot edit the engine by accident. When the root *is* the repository and
+`SHREE_DEV` is unset, `agent/`, `model/`, `server/`, `frontend/` and the rest
+are filtered out of the file tree - the agent can still reach them, the
+explorer simply does not lead with them.
+
+It can also be changed at runtime from the files panel, including to no folder
+at all, which puts the agent into general chat mode.
+
+## Providers and keys
+
+Open **Settings**, choose a provider, paste a key, press **Scan available
+models**, pick one. The scan calls the provider's own model listing, so you
+get exactly what your account can reach rather than a hard-coded list.
+
+Supported: Anthropic, OpenAI, Google, Groq, OpenRouter, DeepSeek, Mistral,
+xAI, Together, Fireworks, Cerebras, Ollama, LM Studio, or any
+OpenAI-compatible endpoint.
+
+Keys live in `.shree/settings.json`, which is gitignored. They are stored
+obfuscated and protected by file permissions where the OS supports it. That is
+not encryption and is not presented as such - the key never leaves your
+machine except to the provider it belongs to, and the API returns only a
+masked preview.
+
+## Files the app writes
+
+| Path | Contents |
+| :--- | :--- |
+| `.shree/settings.json` | Keys, active provider and model, generation defaults |
+| `.shree/skills.json` | Built-in and custom skills |
+| `<workspace>/.timemachine/` | Snapshot object store and history database |
+| `<workspace>/checkpoints/shree_memory.db` | Facts written by the `remember` tool |
+| `workspace/` | The default working directory |
+
+All of them are gitignored.
+
+## Safety
+
+- Filesystem tools resolve every path and refuse anything outside the
+  workspace.
+- Uploads refuse executables, path traversal, absolute paths, drive letters
+  and anything over 8 MB.
+- A short list of unrecoverable shell commands is refused outright.
+- Mutating tools require approval by default; `auto_approve` turns that off
+  per request.
+
+This is not a sandbox. The shell runs with your permissions, and a model that
+is allowed to run commands is allowed to run *commands*. Point `--workspace`
+at what you intend the agent to touch, and leave approval on for anything you
+have not read.

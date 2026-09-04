@@ -36,14 +36,15 @@ class AgentSession:
 
     def __init__(
         self,
-        workspace_root: str,
-        toolkit: Toolkit,
+        workspace_root: str = "",
+        toolkit: Optional[Toolkit] = None,
         max_turns: int = 24,
         tree_summary: str = "",
         memory_context: str = "",
         platform_name: str = "",
+        skills_prompt: str = "",
     ):
-        self.workspace_root = str(Path(workspace_root).resolve())
+        self.workspace_root = str(Path(workspace_root).resolve()) if workspace_root else ""
         self.toolkit = toolkit
         self.max_turns = max_turns
         self.messages: List[Message] = []
@@ -52,6 +53,7 @@ class AgentSession:
             tree_summary=tree_summary,
             memory_context=memory_context,
             platform_name=platform_name,
+            skills_prompt=skills_prompt,
         )
         self.total_usage: Dict[str, int] = {}
 
@@ -94,14 +96,15 @@ class AgentSession:
         max_tokens: int = 4096,
         use_tools: bool = True,
         auto_approve: bool = True,
+        approval_callback: Optional[Callable[[ToolCall], Any]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Drives the conversation to completion, yielding events.
 
-        Event types: `turn_start`, `thinking`, `text`, `tool_start`, `tool_end`,
+        Event types: `turn_start`, `thinking`, `text`, `tool_start`, `tool_approval_prompt`, `tool_end`,
         `usage`, `error`, `done`.
         """
-        tools = self.toolkit.specs() if use_tools else None
+        tools = (self.toolkit.specs() if self.toolkit else None) if use_tools else None
         started = time.perf_counter()
 
         for turn in range(1, self.max_turns + 1):
@@ -143,6 +146,46 @@ class AgentSession:
                 return
 
             reply = "".join(assistant_text)
+
+            if not calls and not reply.strip():
+                # If model finished thinking without emitting response text, prompt it for the response text.
+                try:
+                    followup = Message(role="user", content="Please provide your final answer or response now.")
+                    async for event in provider.stream(
+                        model=model,
+                        messages=self.messages + [followup],
+                        system=self.system_prompt,
+                        tools=None,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    ):
+                        if event.type == "text":
+                            assistant_text.append(event.text)
+                            yield {"type": "text", "text": event.text}
+                        elif event.type == "thinking":
+                            yield {"type": "thinking", "text": event.text}
+                except Exception:
+                    pass
+                reply = "".join(assistant_text)
+
+            if not calls and not reply.strip():
+                last_user_msg = ""
+                for m in reversed(self.messages):
+                    if m.role == "user":
+                        last_user_msg = (m.content or "").lower()
+                        break
+                is_identity_query = any(q in last_user_msg for q in ("who are you", "who made you", "what is your name", "creator"))
+                if is_identity_query:
+                    fallback_msg = (
+                        "I am Shree, an intelligent AI coding assistant created and developed by Pritam from DIU (Daffodil International University), "
+                        "built and trained upon the open-source Qwen foundation."
+                    )
+                else:
+                    fallback_msg = "Here is the result."
+                assistant_text.append(fallback_msg)
+                yield {"type": "text", "text": fallback_msg}
+                reply = fallback_msg
+
             self.messages.append(Message(role="assistant", content=reply, tool_calls=calls))
 
             if not calls:
@@ -156,27 +199,44 @@ class AgentSession:
                 return
 
             for call in calls:
-                needs_approval = (not auto_approve) and call.name in MUTATING_TOOLS
+                needs_approval = (not auto_approve) and (call.name in MUTATING_TOOLS)
                 yield {
                     "type": "tool_start",
                     "id": call.id,
                     "name": call.name,
                     "arguments": call.arguments,
                     "mutating": call.name in MUTATING_TOOLS,
+                    "needs_approval": needs_approval,
                 }
 
+                approved = True
                 if needs_approval:
+                    if approval_callback:
+                        yield {
+                            "type": "tool_approval_prompt",
+                            "id": call.id,
+                            "name": call.name,
+                            "arguments": call.arguments,
+                        }
+                        approved = await approval_callback(call)
+                    else:
+                        approved = False
+
+                if not approved:
                     result = {
                         "ok": False,
-                        "text": "Refused: this tool changes the workspace and approval is required.",
+                        "text": "Refused: The user declined permission to save or modify this file.",
                         "data": {},
                     }
                 else:
                     # Tools are blocking (subprocesses, disk IO). Running them on
                     # the loop thread would stall every other websocket.
-                    result = await asyncio.to_thread(
-                        self.toolkit.execute, call.name, call.arguments
-                    )
+                    if self.toolkit:
+                        result = await asyncio.to_thread(
+                            self.toolkit.execute, call.name, call.arguments
+                        )
+                    else:
+                        result = {"ok": False, "text": "No toolkit available in general mode.", "data": {}}
 
                 text = result.get("text", "")
                 if len(text) > MAX_TOOL_RESULT_CHARS:

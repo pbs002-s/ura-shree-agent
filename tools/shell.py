@@ -159,12 +159,13 @@ class ShellSession:
 
     def _wrap(self, command: str, marker: str) -> str:
         """Appends the sentinel echo that reports completion and exit status."""
+        cmd_stripped = command.strip()
         if sys.platform == "win32":
-            # $? covers cmdlets, $LASTEXITCODE covers native executables.
-            # Reporting both lets the caller tell a failed cmdlet from exit 0.
-            # The subexpressions are not optional: inside a double-quoted string
-            # PowerShell reads "$LASTEXITCODE:" as a scope qualifier and fails to
-            # parse. $(...) forces it to evaluate the variable and stop there.
+            if cmd_stripped == "claude":
+                command = "Start-Process claude ; Write-Output '[Ura-Shree] Launched Claude Code in an interactive console window.'"
+            elif cmd_stripped == "aider":
+                command = "Start-Process cmd -ArgumentList '/c', 'aider' ; Write-Output '[Ura-Shree] Launched Aider in an interactive console window.'"
+
             return (
                 f"{command}\n"
                 f"$__ok = $?\n"
@@ -349,9 +350,11 @@ class ShellSession:
         """Current directory as a workspace-relative path, for the prompt line."""
         try:
             rel = Path(self.cwd).resolve().relative_to(self.workspace_root)
-            return "." if str(rel) == "." else str(rel).replace("\\", "/")
+            if str(rel) == ".":
+                return self.workspace_root.name
+            return f"{self.workspace_root.name}/{str(rel).replace('\\', '/')}"
         except ValueError:
-            return self.cwd
+            return Path(self.cwd).name or self.cwd
 
     def info(self) -> Dict[str, Any]:
         return {

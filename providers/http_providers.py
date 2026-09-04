@@ -226,6 +226,7 @@ class OpenAICompatibleProvider(ChatProvider):
                         _explain(response, self.spec.label), response.status_code, self.spec.id
                     )
 
+                in_think = False
                 async for chunk in _iter_sse(response):
                     choices = chunk.get("choices") or []
                     if usage := chunk.get("usage"):
@@ -240,7 +241,31 @@ class OpenAICompatibleProvider(ChatProvider):
                         yield StreamEvent(type="thinking", text=reasoning)
 
                     if content := delta.get("content"):
-                        yield StreamEvent(type="text", text=content)
+                        if "<think>" in content or "</think>" in content or in_think:
+                            curr = content
+                            while curr:
+                                if in_think:
+                                    if "</think>" in curr:
+                                        th, _, rest = curr.partition("</think>")
+                                        in_think = False
+                                        if th:
+                                            yield StreamEvent(type="thinking", text=th)
+                                        curr = rest
+                                    else:
+                                        yield StreamEvent(type="thinking", text=curr)
+                                        curr = ""
+                                else:
+                                    if "<think>" in curr:
+                                        txt, _, rest = curr.partition("<think>")
+                                        in_think = True
+                                        if txt:
+                                            yield StreamEvent(type="text", text=txt)
+                                        curr = rest
+                                    else:
+                                        yield StreamEvent(type="text", text=curr)
+                                        curr = ""
+                        else:
+                            yield StreamEvent(type="text", text=content)
 
                     for call in delta.get("tool_calls") or []:
                         index = call.get("index", 0)

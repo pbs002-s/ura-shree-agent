@@ -43,16 +43,32 @@ from server.settings import Settings
 from tools.filesystem import FileSystemTool
 from tools.git import GitTool
 from tools.shell import ShellManager, check_command
+from server.skills import SkillsManager
 
-WORKSPACE_ROOT = Path(os.environ.get("SHREE_WORKSPACE", PROJECT_ROOT)).resolve()
+DEFAULT_WORKSPACE = (PROJECT_ROOT / "workspace").resolve()
+DEFAULT_WORKSPACE.mkdir(parents=True, exist_ok=True)
+_configured_ws = os.environ.get("SHREE_WORKSPACE", "")
+WORKSPACE_ROOT: Optional[Path] = Path(_configured_ws).resolve() if _configured_ws else None
+
+skills_mgr = SkillsManager(PROJECT_ROOT / ".shree" / "skills.json")
+
+# Internal directories that belong to Shree's engine, hidden in production view
+INTERNAL_FRAMEWORK_DIRS = {
+    "agent", "checkpoints", "configs", "data", "datasets", "frontend",
+    "inference", "model", "providers", "scripts", "server", "skills",
+    "tests", "tokenizer", "tools", "training",
+}
 
 # Hidden from the file explorer. ".shree" holds API keys and ".timemachine"
 # holds the snapshot object store; neither is content the user browses.
 IGNORED_DIRS = {
     ".git", ".venv", "venv", "__pycache__", "node_modules", ".pytest_cache",
     "dist", "build", ".idea", ".vscode", ".mypy_cache", ".ruff_cache",
-    ".shree", ".timemachine", ".cache", ".next", ".turbo",
+    ".shree", ".timemachine", ".cache", ".next", ".turbo", "checkpoints",
 }
+
+if WORKSPACE_ROOT and WORKSPACE_ROOT == PROJECT_ROOT and not os.environ.get("SHREE_DEV"):
+    IGNORED_DIRS |= INTERNAL_FRAMEWORK_DIRS
 
 # Files a browser upload is allowed to place in the workspace. Everything else
 # is rejected: an upload endpoint that accepts .exe or .dll is a foothold, not a
@@ -67,12 +83,6 @@ MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 def safe_relative_path(raw: str) -> Optional[str]:
     """
     Normalises a browser-supplied path, or None when it tries to climb out.
-
-    The workspace sandbox alone is not enough here: `../../x` under an upload
-    directory still resolves inside the workspace, so it passes the sandbox
-    check while landing somewhere the user never chose. A name from a file
-    picker has no legitimate reason to contain `..`, a drive letter or a leading
-    separator, so all three are refused outright.
     """
     cleaned = raw.replace("\\", "/").strip()
     if not cleaned or cleaned.startswith("/") or ":" in cleaned.split("/")[0]:
@@ -83,15 +93,13 @@ def safe_relative_path(raw: str) -> Optional[str]:
     return "/".join(parts) or None
 
 app = FastAPI(
-    title="URA-Shree",
+    title="Ura-Shree",
     description="Local AI model and coding agent, with bring-your-own-key provider support.",
     version="2.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    # The server binds to loopback and holds no cross-site cookies, so the
-    # browser's origin check adds nothing here.
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
@@ -100,13 +108,22 @@ app.add_middleware(
 
 # -- shared state -------------------------------------------------------------
 
-fs_tool = FileSystemTool(str(WORKSPACE_ROOT))
-git_tool = GitTool(str(WORKSPACE_ROOT))
-shells = ShellManager(str(WORKSPACE_ROOT))
-indexer = CodebaseIndexer(str(WORKSPACE_ROOT))
-memory_store = ProjectMemory(str(WORKSPACE_ROOT / "checkpoints" / "shree_memory.db"))
-time_machine = TimeMachine(str(WORKSPACE_ROOT))
-settings = Settings(str(WORKSPACE_ROOT / ".shree" / "settings.json"))
+fs_tool = FileSystemTool(str(WORKSPACE_ROOT)) if WORKSPACE_ROOT else None
+git_tool = GitTool(str(WORKSPACE_ROOT)) if WORKSPACE_ROOT else None
+shells = ShellManager(str(WORKSPACE_ROOT)) if WORKSPACE_ROOT else ShellManager(str(PROJECT_ROOT))
+indexer = CodebaseIndexer(str(WORKSPACE_ROOT)) if WORKSPACE_ROOT else None
+memory_file = (WORKSPACE_ROOT / "checkpoints" / "shree_memory.db") if WORKSPACE_ROOT else (PROJECT_ROOT / "checkpoints" / "shree_memory.db")
+if not memory_file.exists() and (PROJECT_ROOT / "checkpoints" / "shree_memory.db").exists():
+    memory_file = PROJECT_ROOT / "checkpoints" / "shree_memory.db"
+else:
+    memory_file.parent.mkdir(parents=True, exist_ok=True)
+memory_store = ProjectMemory(str(memory_file))
+time_machine = TimeMachine(str(WORKSPACE_ROOT)) if WORKSPACE_ROOT else None
+
+settings_file = (WORKSPACE_ROOT / ".shree" / "settings.json") if WORKSPACE_ROOT else (PROJECT_ROOT / ".shree" / "settings.json")
+if not settings_file.exists() and (PROJECT_ROOT / ".shree" / "settings.json").exists():
+    settings_file = PROJECT_ROOT / ".shree" / "settings.json"
+settings = Settings(str(settings_file))
 
 _agents: Dict[str, CodingAgent] = {}
 _engine = None
@@ -118,7 +135,7 @@ def get_agent(session_id: str = "default") -> CodingAgent:
     agent = _agents.get(session_id)
     if agent is None:
         agent = CodingAgent(
-            workspace_root=str(WORKSPACE_ROOT),
+            workspace_root=str(WORKSPACE_ROOT) if WORKSPACE_ROOT else None,
             shell_manager=shells,
             time_machine=time_machine,
             session_id=session_id,
@@ -265,7 +282,7 @@ def get_status() -> Dict[str, Any]:
     return {
         "status": "online",
         "version": app.version,
-        "workspace": str(WORKSPACE_ROOT),
+        "workspace": str(WORKSPACE_ROOT) if WORKSPACE_ROOT else None,
         "platform": f"{platform.system()} {platform.release()}",
         "active": active,
         "local_model": model_block,
@@ -277,8 +294,8 @@ def get_status() -> Dict[str, Any]:
             **host_memory_snapshot(),
         },
         "time_machine": {
-            "head": time_machine.head,
-            "store_bytes": time_machine.store_size(),
+            "head": time_machine.head if time_machine else None,
+            "store_bytes": time_machine.store_size() if time_machine else 0,
         },
     }
 
@@ -352,9 +369,132 @@ def select_model(req: SelectModelRequest) -> Dict[str, Any]:
 
 # -- workspace ----------------------------------------------------------------
 
+class WorkspaceSelectRequest(BaseModel):
+    path: str
+
+
+class SkillCreateRequest(BaseModel):
+    name: str
+    description: str = ""
+    prompt: str
+
+
+class SkillToggleRequest(BaseModel):
+    enabled: Optional[bool] = None
+
+
+@app.get("/api/workspace/current")
+def get_current_workspace() -> Dict[str, Any]:
+    return {"workspace": str(WORKSPACE_ROOT) if WORKSPACE_ROOT else None}
+
+
+@app.post("/api/workspace/select")
+def select_workspace(req: WorkspaceSelectRequest) -> Dict[str, Any]:
+    global WORKSPACE_ROOT, fs_tool, git_tool, shells, indexer, time_machine, _agents, IGNORED_DIRS
+    raw_path = req.path.strip() if req.path else ""
+    if not raw_path:
+        WORKSPACE_ROOT = None
+        fs_tool = None
+        git_tool = None
+        indexer = None
+        time_machine = None
+        shells = ShellManager(str(PROJECT_ROOT))
+        _agents.clear()
+        return {"ok": True, "workspace": None}
+
+    target = Path(raw_path).resolve()
+    if not target.exists():
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except Exception as err:
+            raise HTTPException(status_code=400, detail=f"Cannot create directory: {err}")
+    if not target.is_dir():
+        raise HTTPException(status_code=400, detail=f"Path is not a directory: {raw_path}")
+
+    WORKSPACE_ROOT = target
+    fs_tool = FileSystemTool(str(WORKSPACE_ROOT))
+    git_tool = GitTool(str(WORKSPACE_ROOT))
+    shells = ShellManager(str(WORKSPACE_ROOT))
+    indexer = CodebaseIndexer(str(WORKSPACE_ROOT))
+    time_machine = TimeMachine(str(WORKSPACE_ROOT))
+    IGNORED_DIRS = {
+        ".git", ".venv", "venv", "__pycache__", "node_modules", ".pytest_cache",
+        "dist", "build", ".idea", ".vscode", ".mypy_cache", ".ruff_cache",
+        ".shree", ".timemachine", ".cache", ".next", ".turbo", "checkpoints",
+    }
+    if WORKSPACE_ROOT == PROJECT_ROOT and not os.environ.get("SHREE_DEV"):
+        IGNORED_DIRS |= INTERNAL_FRAMEWORK_DIRS
+    _agents.clear()
+    return {"ok": True, "workspace": str(WORKSPACE_ROOT)}
+
+
+def ask_directory_dialog(title: str = "Select Folder", initial_dir: Optional[str] = None) -> Optional[str]:
+    """Opens native OS File Explorer folder picker dialog on the desktop via a dedicated subprocess."""
+    script_path = PROJECT_ROOT / "scripts" / "pick_folder.py"
+    try:
+        import subprocess
+        res = subprocess.run(
+            [sys.executable, str(script_path), title, initial_dir or (str(WORKSPACE_ROOT) if WORKSPACE_ROOT else str(PROJECT_ROOT))],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        out = res.stdout.strip()
+        if out and Path(out).is_dir():
+            return out
+    except Exception:
+        pass
+    return None
+
+
+@app.post("/api/workspace/browse")
+async def browse_workspace() -> Dict[str, Any]:
+    """Opens native File Explorer to select a workspace folder."""
+    folder = await asyncio.to_thread(
+        ask_directory_dialog,
+        "Select Project Workspace Folder for Ura-Shree",
+        str(WORKSPACE_ROOT) if WORKSPACE_ROOT else str(PROJECT_ROOT),
+    )
+    if not folder:
+        return {"ok": False, "cancelled": True, "workspace": str(WORKSPACE_ROOT) if WORKSPACE_ROOT else None}
+
+    res = select_workspace(WorkspaceSelectRequest(path=folder))
+    return res
+
+
+@app.post("/api/browse-directory")
+async def browse_directory() -> Dict[str, Any]:
+    """Opens native File Explorer to select a directory for terminal or file viewing."""
+    folder = await asyncio.to_thread(
+        ask_directory_dialog,
+        "Select Working Directory",
+        str(WORKSPACE_ROOT) if WORKSPACE_ROOT else str(PROJECT_ROOT),
+    )
+    if not folder:
+        return {"ok": False, "cancelled": True, "path": None}
+    return {"ok": True, "path": folder}
+
+
+@app.get("/api/workspace/suggestions")
+def get_workspace_suggestions() -> Dict[str, Any]:
+    home = Path.home()
+    return {
+        "workspace": str(DEFAULT_WORKSPACE) if DEFAULT_WORKSPACE.exists() else None,
+        "project_root": str(PROJECT_ROOT),
+        "desktop": str(home / "Desktop") if (home / "Desktop").exists() else None,
+        "documents": str(home / "Documents") if (home / "Documents").exists() else None,
+        "downloads": str(home / "Downloads") if (home / "Downloads").exists() else None,
+    }
+
+
+
+
 @app.get("/api/tree")
 def get_file_tree(max_entries: int = 4000) -> Dict[str, Any]:
     """The workspace as a nested tree for the explorer."""
+    if not WORKSPACE_ROOT:
+        return {"tree": None, "truncated": False, "workspace": None}
+
     counter = {"n": 0}
 
     def build(path: Path) -> Optional[Dict[str, Any]]:
@@ -376,6 +516,9 @@ def get_file_tree(max_entries: int = 4000) -> Dict[str, Any]:
             for entry in entries:
                 if entry.name in IGNORED_DIRS:
                     continue
+                if WORKSPACE_ROOT == PROJECT_ROOT and not os.environ.get("SHREE_DEV"):
+                    if not entry.is_dir() and entry.name in {".gitignore", "requirements.txt"}:
+                        continue
                 child = build(entry)
                 if child:
                     children.append(child)
@@ -389,11 +532,13 @@ def get_file_tree(max_entries: int = 4000) -> Dict[str, Any]:
 
     root = build(WORKSPACE_ROOT) or {"name": WORKSPACE_ROOT.name, "path": "", "isDir": True, "children": []}
     root["path"] = ""
-    return {"tree": root, "truncated": counter["n"] >= max_entries}
+    return {"tree": root, "truncated": counter["n"] >= max_entries, "workspace": str(WORKSPACE_ROOT)}
 
 
 @app.get("/api/file")
 def read_file(path: str = Query(...)) -> Dict[str, Any]:
+    if not fs_tool:
+        raise HTTPException(status_code=400, detail="No workspace folder open.")
     try:
         result = fs_tool.read(path)
     except PermissionError as err:
@@ -404,15 +549,75 @@ def read_file(path: str = Query(...)) -> Dict[str, Any]:
 
 
 @app.post("/api/file")
+@app.put("/api/file")
 def write_file(req: FileWriteRequest) -> Dict[str, Any]:
+    if not fs_tool or not WORKSPACE_ROOT:
+        raise HTTPException(status_code=400, detail="No workspace folder open.")
     try:
-        time_machine.snapshot(f"Before editing {req.path}", kind="auto")
+        if time_machine:
+            time_machine.snapshot(f"Before editing {req.path}", kind="auto")
         result = fs_tool.write(req.path, req.content)
     except PermissionError as err:
         raise HTTPException(status_code=403, detail=str(err))
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "write failed"))
     return result
+
+
+@app.delete("/api/file")
+def delete_file(path: str = Query(...)) -> Dict[str, Any]:
+    if not WORKSPACE_ROOT:
+        raise HTTPException(status_code=400, detail="No workspace folder open.")
+    rel = safe_relative_path(path)
+    if not rel:
+        raise HTTPException(status_code=400, detail="Invalid path.")
+    target = (WORKSPACE_ROOT / rel).resolve()
+    if not str(target).startswith(str(WORKSPACE_ROOT)):
+        raise HTTPException(status_code=403, detail="Path outside workspace.")
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File or directory not found.")
+
+    try:
+        if time_machine:
+            time_machine.snapshot(f"Before deleting {rel}", kind="auto")
+    except Exception:
+        pass
+
+    if target.is_dir():
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+    return {"ok": True, "deleted": rel}
+
+
+# -- skills -------------------------------------------------------------------
+
+@app.get("/api/skills")
+def get_skills() -> List[Dict[str, Any]]:
+    return skills_mgr.list_skills()
+
+
+@app.post("/api/skills")
+def add_skill(req: SkillCreateRequest) -> Dict[str, Any]:
+    if not req.name.strip() or not req.prompt.strip():
+        raise HTTPException(status_code=400, detail="Skill name and prompt are required.")
+    return skills_mgr.add_skill(req.name, req.description, req.prompt)
+
+
+@app.patch("/api/skills/{skill_id}")
+def update_skill(skill_id: str, req: SkillToggleRequest) -> Dict[str, Any]:
+    updated = skills_mgr.toggle_skill(skill_id, req.enabled)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Skill not found.")
+    return updated
+
+
+@app.delete("/api/skills/{skill_id}")
+def remove_skill(skill_id: str) -> Dict[str, Any]:
+    ok = skills_mgr.delete_skill(skill_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Cannot delete built-in skill or skill not found.")
+    return {"ok": True}
 
 
 @app.post("/api/upload")
@@ -469,7 +674,7 @@ def upload_files(req: UploadRequest) -> Dict[str, Any]:
             "bytes": len(data),
         })
 
-    if written:
+    if written and time_machine:
         time_machine.snapshot(f"Uploaded {len(written)} file(s)", kind="upload")
     return {"written": written, "rejected": rejected, "count": len(written)}
 
@@ -485,6 +690,8 @@ def get_memory() -> Dict[str, Any]:
 
 @app.post("/api/index")
 def build_index() -> Dict[str, Any]:
+    if not indexer:
+        return {"stats": {}, "symbols": [], "tree_summary": "No workspace active."}
     stats = indexer.scan_and_index()
     symbols = [
         {
@@ -503,6 +710,8 @@ def build_index() -> Dict[str, Any]:
 
 @app.get("/api/git/status")
 def git_status() -> Dict[str, Any]:
+    if not git_tool:
+        return {"status": "No workspace active", "diff": ""}
     return {"status": git_tool.status(), "diff": git_tool.diff()}
 
 
@@ -510,16 +719,22 @@ def git_status() -> Dict[str, Any]:
 
 @app.get("/api/timemachine")
 def get_timeline(limit: int = 200) -> Dict[str, Any]:
+    if not time_machine:
+        return {"nodes": [], "head": None, "store_bytes": 0}
     return time_machine.timeline(limit=limit)
 
 
 @app.post("/api/timemachine/snapshot")
 def create_snapshot(req: SnapshotRequest) -> Dict[str, Any]:
+    if not time_machine:
+        raise HTTPException(status_code=400, detail="No active workspace for snapshots.")
     return time_machine.snapshot(req.label, kind="manual")
 
 
 @app.get("/api/timemachine/diff")
 def snapshot_diff(from_id: str = Query(...), to_id: str = Query(...)) -> Dict[str, Any]:
+    if not time_machine:
+        raise HTTPException(status_code=400, detail="No active workspace for snapshots.")
     try:
         return time_machine.diff(from_id, to_id)
     except KeyError as err:
@@ -528,6 +743,8 @@ def snapshot_diff(from_id: str = Query(...), to_id: str = Query(...)) -> Dict[st
 
 @app.get("/api/timemachine/file")
 def snapshot_file(snapshot_id: str = Query(...), path: str = Query(...)) -> Dict[str, Any]:
+    if not time_machine:
+        raise HTTPException(status_code=400, detail="No active workspace for snapshots.")
     try:
         return time_machine.file_at(snapshot_id, path)
     except KeyError as err:
@@ -536,6 +753,8 @@ def snapshot_file(snapshot_id: str = Query(...), path: str = Query(...)) -> Dict
 
 @app.post("/api/timemachine/restore")
 def restore_snapshot(req: RestoreRequest) -> Dict[str, Any]:
+    if not time_machine:
+        raise HTTPException(status_code=400, detail="No active workspace for snapshots.")
     try:
         return time_machine.restore(req.snapshot_id, dry_run=req.dry_run)
     except KeyError as err:
@@ -544,6 +763,8 @@ def restore_snapshot(req: RestoreRequest) -> Dict[str, Any]:
 
 @app.post("/api/timemachine/prune")
 def prune_snapshots(keep: int = 100) -> Dict[str, Any]:
+    if not time_machine:
+        return {"removed": 0}
     return time_machine.prune(keep=keep)
 
 
@@ -649,6 +870,25 @@ async def agent_socket(websocket: WebSocket) -> None:
     await websocket.accept()
     session_id = websocket.query_params.get("session", "default")
     running: Optional[asyncio.Task] = None
+    pending_approvals: Dict[str, asyncio.Future[bool]] = {}
+
+    async def handle_approval(call: Any) -> bool:
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[bool] = loop.create_future()
+        pending_approvals[call.id] = fut
+        try:
+            await websocket.send_json({
+                "type": "tool_approval_prompt",
+                "id": call.id,
+                "name": call.name,
+                "arguments": call.arguments,
+            })
+            approved = await asyncio.wait_for(fut, timeout=300)
+            return approved
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            return False
+        finally:
+            pending_approvals.pop(call.id, None)
 
     async def drive(message: Dict[str, Any]) -> None:
         active = settings.get("active", {})
@@ -681,9 +921,11 @@ async def agent_socket(websocket: WebSocket) -> None:
                 temperature=float(message.get("temperature", active.get("temperature", 0.7))),
                 max_tokens=int(message.get("max_tokens", active.get("max_tokens", 4096))),
                 use_tools=bool(message.get("use_tools", active.get("use_tools", True))),
-                auto_approve=bool(message.get("auto_approve", active.get("auto_approve", True))),
+                auto_approve=bool(message.get("auto_approve", active.get("auto_approve", False))),
                 attachments=message.get("attachments"),
                 fresh=bool(message.get("fresh")),
+                skills_prompt=skills_mgr.get_active_prompt(),
+                approval_callback=handle_approval,
             ):
                 await websocket.send_json(event)
         except asyncio.CancelledError:
@@ -713,13 +955,25 @@ async def agent_socket(websocket: WebSocket) -> None:
                     continue
                 running = asyncio.create_task(drive(message))
 
+            elif action == "tool_approval":
+                tool_id = str(message.get("id", ""))
+                approved = bool(message.get("approved", False))
+                if tool_id in pending_approvals and not pending_approvals[tool_id].done():
+                    pending_approvals[tool_id].set_result(approved)
+
             elif action == "stop":
                 if running and not running.done():
                     running.cancel()
+                for fut in pending_approvals.values():
+                    if not fut.done():
+                        fut.cancel()
                 await websocket.send_json({"type": "stopped"})
 
             elif action == "reset":
                 get_agent(session_id).reset()
+                for fut in pending_approvals.values():
+                    if not fut.done():
+                        fut.cancel()
                 await websocket.send_json({"type": "reset"})
 
             elif action == "ping":

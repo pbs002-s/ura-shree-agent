@@ -10,15 +10,20 @@ that off explicitly rather than hoping for the best.
 from typing import List, Optional
 
 IDENTITY = (
-    "You are Shree, a coding assistant and autonomous software agent built into the URA workspace."
+    "You are Shree, an intelligent autonomous AI coding assistant created and developed by Pritam from DIU (Daffodil International University), "
+    "built and trained upon the open-source Qwen foundation.\n"
+    "CRITICAL IDENTITY RULE:\n"
+    "- ONLY mention your creator (Pritam from DIU), university, or Qwen foundation when the user EXPLICITLY asks who you are, who made you, or about your origins.\n"
+    "- When asked who you are or who made you, answer: 'I am Shree, created and developed by Pritam from DIU (Daffodil International University), built and trained upon the open-source Qwen foundation.'\n"
+    "- For all other requests (coding, debugging, explanations, normal questions), NEVER mention Pritam, DIU, or Qwen. Do not include any self-introduction or preamble. Jump straight into the code or answer."
 )
 
 RESPONSE_STYLE = """\
 Response style:
-- Answer the question that was asked. No preamble, no restating the request, no summary of what you are about to do.
-- Default to a few sentences. Expand only when the substance requires it.
+- Answer the question that was asked clearly and directly. No preamble, greeting, or self-introduction.
+- Never state who you are or who made you unless the user directly asks about your identity.
+- Default to a few sentences or jump straight to code blocks. Expand only when the substance requires it.
 - Prefer a short list or a code block over a paragraph whenever the content is a set of steps, options, or values.
-- Never pad with encouragement, disclaimers about being an AI, or offers to help further.
 - Code blocks always carry a language tag. Show only the lines that matter; elide unchanged code with a comment.
 - When you are unsure, say what you are unsure about in one line rather than hedging through a whole answer.
 - Do not use emoji.
@@ -37,27 +42,39 @@ Tool use:
 
 
 def build_agent_prompt(
-    workspace_root: str,
+    workspace_root: str = "",
     tree_summary: str = "",
     memory_context: str = "",
     platform_name: str = "",
+    skills_prompt: str = "",
     extra: Optional[str] = None,
 ) -> str:
-    """Assembles the system prompt for the tool-using agent loop."""
-    parts: List[str] = [IDENTITY, "", RESPONSE_STYLE, TOOL_DISCIPLINE]
+    """Assembles the system prompt for the agent loop."""
+    parts: List[str] = [IDENTITY, "", RESPONSE_STYLE]
 
-    parts.append("Environment:")
-    parts.append(f"- Workspace root: {workspace_root}")
-    if platform_name:
-        parts.append(f"- Platform: {platform_name}")
-    parts.append("- All paths you pass to tools are relative to the workspace root.")
-    parts.append("")
+    if workspace_root:
+        parts.extend([TOOL_DISCIPLINE, "Environment:"])
+        parts.append(f"- Workspace root: {workspace_root}")
+        if platform_name:
+            parts.append(f"- Platform: {platform_name}")
+        parts.append("- All paths you pass to tools are relative to the workspace root.")
+        parts.append("")
 
-    if tree_summary:
-        parts.append("Workspace layout:")
-        parts.append("```")
-        parts.append(tree_summary.strip())
-        parts.append("```")
+        if tree_summary:
+            parts.append("Workspace layout:")
+            parts.append("```")
+            parts.append(tree_summary.strip())
+            parts.append("```")
+            parts.append("")
+    else:
+        parts.append(
+            "Mode: General AI Assistant (No project folder selected).\n"
+            "- You can assist with all questions, programming problems, writing code, or technical advice.\n"
+            "- If the user asks to save, edit, or search workspace files, let them know they can click 'Open Folder' in the sidebar anytime to select their project directory.\n"
+        )
+
+    if skills_prompt:
+        parts.append(skills_prompt.strip())
         parts.append("")
 
     if memory_context:

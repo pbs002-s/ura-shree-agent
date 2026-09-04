@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, formatBytes, relativeTime } from '../lib/api'
 import {
-  IconBranch, IconChevronDown, IconChevronRight, IconClock, IconFolderPlus,
-  IconPlus, IconRefresh, IconRestore, IconSearch,
+  IconBranch, IconChevronDown, IconChevronRight, IconClock, IconClose, IconEdit, IconFolder,
+  IconFolderPlus, IconPlus, IconRefresh, IconRestore, IconSearch, IconTrash,
 } from '../lib/icons'
 import type { Snapshot, TreeNode } from '../types'
 
 /* ── Files ──────────────────────────────────────────────────────────────── */
 
 function TreeRow({
-  node, depth, expanded, selected, onToggle, onOpen,
+  node, depth, expanded, selected, onToggle, onOpen, onEdit, onDelete,
 }: {
   node: TreeNode
   depth: number
@@ -17,12 +17,14 @@ function TreeRow({
   selected: string
   onToggle: (path: string) => void
   onOpen: (node: TreeNode) => void
+  onEdit?: (path: string) => void
+  onDelete?: (path: string) => void
 }) {
   const isOpen = expanded.has(node.path)
   return (
-    <>
+    <div className={`tree-row-container${selected === node.path ? ' selected' : ''}`}>
       <button
-        className={`tree-row${selected === node.path ? ' selected' : ''}`}
+        className="tree-row"
         style={{ paddingLeft: 8 + depth * 12 }}
         onClick={() => (node.isDir ? onToggle(node.path) : onOpen(node))}
         title={node.path}
@@ -35,6 +37,36 @@ function TreeRow({
           <span className="tree-size">{formatBytes(node.size)}</span>
         )}
       </button>
+      {!node.isDir && (
+        <div className="tree-row-actions">
+          {onEdit && (
+            <button
+              className="tree-action-btn"
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit(node.path)
+              }}
+              title="Edit code"
+            >
+              <IconEdit size={12} />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              className="tree-action-btn danger"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (window.confirm(`Delete file "${node.name}"?`)) {
+                  onDelete(node.path)
+                }
+              }}
+              title="Delete file"
+            >
+              <IconTrash size={12} />
+            </button>
+          )}
+        </div>
+      )}
       {node.isDir && isOpen && node.children?.map((child) => (
         <TreeRow
           key={child.path}
@@ -44,9 +76,11 @@ function TreeRow({
           selected={selected}
           onToggle={onToggle}
           onOpen={onOpen}
+          onEdit={onEdit}
+          onDelete={onDelete}
         />
       ))}
-    </>
+    </div>
   )
 }
 
@@ -57,13 +91,18 @@ function flatten(node: TreeNode, out: TreeNode[] = []): TreeNode[] {
 }
 
 export function FilesPanel({
-  tree, onOpenFile, onRefresh, onAddFiles, onAddFolder,
+  tree, workspace, onOpenFile, onEditFile, onDeleteFile, onSelectWorkspace, onRefresh, onAddFiles, onAddFolder, onClose,
 }: {
   tree: TreeNode | null
+  workspace?: string | null
   onOpenFile: (path: string) => void
+  onEditFile?: (path: string) => void
+  onDeleteFile?: (path: string) => void
+  onSelectWorkspace?: (path: string) => void
   onRefresh: () => void
   onAddFiles: () => void
   onAddFolder: () => void
+  onClose?: () => void
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['']))
   const [selected, setSelected] = useState('')
@@ -86,61 +125,170 @@ export function FilesPanel({
 
   const open = (node: TreeNode) => {
     setSelected(node.path)
-    onOpenFile(node.path)
+    if (onEditFile) {
+      onEditFile(node.path)
+    } else {
+      onOpenFile(node.path)
+    }
   }
+
+  const [openingFolder, setOpeningFolder] = useState(false)
+
+  const openFolderPicker = async () => {
+    if (openingFolder) return
+    setOpeningFolder(true)
+    try {
+      const res = await api.browseWorkspace()
+      if (res.ok && res.workspace && onSelectWorkspace) {
+        onSelectWorkspace(res.workspace)
+      }
+    } catch (err) {
+      console.error('Failed to open folder picker:', err)
+    } finally {
+      setOpeningFolder(false)
+    }
+  }
+
+  const workspaceName = workspace ? (workspace.split(/[/\\]/).filter(Boolean).pop() || workspace) : null
 
   return (
     <>
       <div className="pane-head">
         <span className="section-label">Files</span>
         <span className="spacer" />
-        <button className="btn btn-ghost btn-sm btn-icon" onClick={onAddFiles} title="Upload files">
-          <IconPlus size={13} />
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={openFolderPicker}
+          disabled={openingFolder}
+          title={workspace ? `Active: ${workspace}. Click to switch folder.` : 'Open project folder in File Explorer'}
+          style={{ gap: 4, fontSize: 'var(--fs-xs)', padding: '2px 7px' }}
+        >
+          <IconFolder size={12} />
+          <span>{openingFolder ? 'Opening…' : (workspaceName ? 'Switch Folder' : 'Open Folder')}</span>
         </button>
-        <button className="btn btn-ghost btn-sm btn-icon" onClick={onAddFolder} title="Add a folder">
-          <IconFolderPlus size={13} />
-        </button>
-        <button className="btn btn-ghost btn-sm btn-icon" onClick={onRefresh} title="Refresh">
-          <IconRefresh size={13} />
-        </button>
+        {workspace && (
+          <>
+            <button className="btn btn-ghost btn-sm btn-icon" onClick={onAddFiles} title="Upload files">
+              <IconPlus size={13} />
+            </button>
+            <button className="btn btn-ghost btn-sm btn-icon" onClick={onAddFolder} title="Add a folder">
+              <IconFolderPlus size={13} />
+            </button>
+            <button className="btn btn-ghost btn-sm btn-icon" onClick={onRefresh} title="Refresh">
+              <IconRefresh size={13} />
+            </button>
+          </>
+        )}
+        {onClose && (
+          <button className="btn btn-ghost btn-sm btn-icon" onClick={onClose} title="Hide files panel" aria-label="Hide files panel">
+            <IconClose size={13} />
+          </button>
+        )}
       </div>
 
-      <div style={{ padding: '7px 8px', borderBottom: '1px solid var(--line)' }}>
-        <div style={{ position: 'relative' }}>
-          <IconSearch
-            size={13}
-            style={{ position: 'absolute', left: 8, top: 8, color: 'var(--text-3)' }}
-          />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter by path"
-            style={{ paddingLeft: 26, height: 28 }}
-          />
+      {workspace && (
+        <div className="workspace-badge-bar">
+          <IconFolder size={12} className="accent" />
+          <span className="workspace-path truncate" title={workspace}>{workspace}</span>
+          <button
+            className="btn btn-ghost btn-sm faint"
+            onClick={() => onSelectWorkspace?.('')}
+            title="Detach folder to enter pure General Chat Mode"
+            style={{ fontSize: 10, padding: '1px 5px', height: 20 }}
+          >
+            Detach
+          </button>
         </div>
-      </div>
+      )}
+
+      {workspace && (
+        <div style={{ padding: '7px 8px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ position: 'relative' }}>
+            <IconSearch
+              size={13}
+              style={{ position: 'absolute', left: 8, top: 8, color: 'var(--text-3)' }}
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter by path"
+              style={{ paddingLeft: 26, height: 28 }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="pane-body">
-        {!tree ? (
+        {!workspace ? (
+          <div className="empty" style={{ padding: '36px 16px', textAlign: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+              <IconFolder size={36} style={{ color: 'var(--accent)' }} />
+            </div>
+            <div style={{ fontWeight: 600, color: 'var(--text-1)', marginBottom: 8, fontSize: 'var(--fs-sm)' }}>
+              General Chat Mode
+            </div>
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 16 }}>
+              No project folder is open. Normal chat operates freely with Shree. To work on code files, run tests, or edit a repository, open a folder.
+            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={openFolderPicker}
+              disabled={openingFolder}
+              style={{ margin: '0 auto', display: 'inline-flex' }}
+            >
+              <IconFolder size={13} />
+              <span>{openingFolder ? 'Opening File Explorer…' : 'Open Project Folder'}</span>
+            </button>
+          </div>
+        ) : !tree ? (
           <div className="empty">Loading the workspace…</div>
         ) : matches ? (
           <div className="tree">
             {matches.length === 0 && <div className="empty">Nothing matches “{query}”.</div>}
             {matches.map((node) => (
-              <button
-                key={node.path}
-                className={`tree-row${selected === node.path ? ' selected' : ''}`}
-                style={{ paddingLeft: 8 }}
-                onClick={() => open(node)}
-                title={node.path}
-              >
-                <span className="tree-caret" />
-                <span className="truncate">{node.path}</span>
-              </button>
+              <div key={node.path} className={`tree-row-container${selected === node.path ? ' selected' : ''}`}>
+                <button
+                  className="tree-row"
+                  style={{ paddingLeft: 8 }}
+                  onClick={() => open(node)}
+                  title={node.path}
+                >
+                  <span className="tree-caret" />
+                  <span className="truncate">{node.path}</span>
+                </button>
+                <div className="tree-row-actions">
+                  <button
+                    className="tree-action-btn"
+                    onClick={() => onEditFile?.(node.path)}
+                    title="Edit code"
+                  >
+                    <IconEdit size={12} />
+                  </button>
+                  {onDeleteFile && (
+                    <button
+                      className="tree-action-btn danger"
+                      onClick={() => {
+                        if (window.confirm(`Delete file "${node.name}"?`)) onDeleteFile(node.path)
+                      }}
+                      title="Delete file"
+                    >
+                      <IconTrash size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         ) : (
           <div className="tree">
+            {(!tree.children || tree.children.length === 0) && (
+              <div className="empty" style={{ padding: '32px 14px', textAlign: 'center' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-1)', marginBottom: 6 }}>Workspace is empty</div>
+                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-3)', lineHeight: 1.5 }}>
+                  Drop files here, upload via the + button, or ask Shree to generate project files.
+                </div>
+              </div>
+            )}
             {tree.children?.map((child) => (
               <TreeRow
                 key={child.path}
@@ -150,6 +298,8 @@ export function FilesPanel({
                 selected={selected}
                 onToggle={toggle}
                 onOpen={open}
+                onEdit={onEditFile}
+                onDelete={onDeleteFile}
               />
             ))}
           </div>

@@ -145,7 +145,7 @@ def test_auto_approve_off_blocks_mutating_tools(workspace, scripted):
         agent.close()
 
     tool_end = next(e for e in events if e["type"] == "tool_end")
-    assert not tool_end["ok"] and "approval" in tool_end["text"].lower()
+    assert not tool_end["ok"] and "declined permission" in tool_end["text"].lower()
     assert not (workspace / "new.py").exists()
 
 

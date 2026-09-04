@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chat } from './components/Chat'
+import { CodeEditorModal } from './components/CodeEditorModal'
 import { DiffView } from './components/DiffView'
 import { FilesPanel, MemoryPanel, TimelinePanel } from './components/Sidebar'
 import { SettingsDialog } from './components/Settings'
+import { SkillsModal } from './components/SkillsModal'
 import { TerminalPanel } from './components/Terminal'
 import { api, formatBytes, Socket } from './lib/api'
 import {
-  IconAlert, IconBrain, IconCheck, IconChat, IconClock, IconCpu, IconFiles,
-  IconMonitor, IconMoon, IconSettings, IconSun, IconTerminal,
+  IconAlert, IconBolt, IconBrain, IconCheck, IconChat, IconClock, IconCpu, IconFiles,
+  IconMonitor, IconMoon, IconSettings, IconSun, IconTerminal, IconUraShreeLogo,
 } from './lib/icons'
 import type {
   AppSettings, Attachment, Block, SnapshotDiff, Status, Theme, ToolRun, TreeNode, Turn,
@@ -55,6 +57,9 @@ export default function App() {
   const [status, setStatus] = useState<Status | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [tree, setTree] = useState<TreeNode | null>(null)
+  const [workspace, setWorkspace] = useState<string | null>(null)
+  const [editorPath, setEditorPath] = useState<string | null>(null)
+  const [skillsOpen, setSkillsOpen] = useState(false)
 
   const [turns, setTurns] = useState<Turn[]>([])
   const [busy, setBusy] = useState(false)
@@ -104,6 +109,7 @@ export default function App() {
 
   useEffect(() => {
     api.settings().then(setSettings).catch((err) => notify(String(err.message), 'danger'))
+    api.currentWorkspace().then((data) => setWorkspace(data.workspace)).catch(() => undefined)
     refreshTree()
     const poll = () => api.status().then(setStatus).catch(() => undefined)
     void poll()
@@ -169,6 +175,27 @@ export default function App() {
         return
       }
 
+      if (type === 'tool_approval_prompt') {
+        const toolId = String(message.id)
+        appendToLastTurn((turn) => ({
+          ...turn,
+          blocks: turn.blocks.map((block) =>
+            block.kind === 'tool' && block.tool?.id === toolId
+              ? {
+                ...block,
+                tool: {
+                  ...block.tool!,
+                  status: 'awaiting_approval',
+                  needs_approval: true,
+                },
+              }
+              : block,
+          ),
+        }))
+        notify('Permission requested: Shree wants to write/edit a file', 'info')
+        return
+      }
+
       if (type === 'tool_end') {
         appendToLastTurn((turn) => ({
           ...turn,
@@ -179,6 +206,7 @@ export default function App() {
                 tool: {
                   ...block.tool!,
                   status: message.ok ? 'ok' : 'failed',
+                  needs_approval: false,
                   text: String(message.text ?? ''),
                   data: (message.data as Record<string, unknown>) ?? {},
                 },
@@ -220,7 +248,7 @@ export default function App() {
     })
 
     return () => { offStatus(); offMessage(); socket.close() }
-  }, [appendToLastTurn, refreshTree])
+  }, [appendToLastTurn, notify, refreshTree])
 
   /* ── actions ───────────────────────────────────────────────────────────── */
 
@@ -274,9 +302,9 @@ export default function App() {
         })),
       )
       try {
-        const result = await api.upload('workspace/uploads', encoded)
+        const result = await api.upload('uploads', encoded)
         notify(
-          `Added ${result.count} file(s) under workspace/uploads` +
+          `Added ${result.count} file(s) under uploads` +
           (result.rejected.length ? `; ${result.rejected.length} rejected.` : '.'),
           result.count ? 'ok' : 'danger',
         )
@@ -339,12 +367,55 @@ export default function App() {
     }
   }
 
+  const handleSelectWorkspace = async (path: string) => {
+    try {
+      const res = await api.selectWorkspace(path)
+      setWorkspace(res.workspace)
+      refreshTree()
+      notify(res.workspace ? `Workspace set to: ${res.workspace}` : 'Switched to General Chat Mode (no folder)', 'ok')
+    } catch (err) {
+      notify((err as Error).message, 'danger')
+    }
+  }
+
+  const handleDeleteFile = async (path: string) => {
+    try {
+      const res = await api.deleteFile(path)
+      notify(`Deleted ${res.deleted}`, 'ok')
+      refreshTree()
+      setTimelineKey((k) => k + 1)
+    } catch (err) {
+      notify((err as Error).message, 'danger')
+    }
+  }
+
+  const handleApproveTool = (id: string, approved: boolean) => {
+    socketRef.current?.send({ action: 'tool_approval', id, approved })
+    appendToLastTurn((turn) => ({
+      ...turn,
+      blocks: turn.blocks.map((block) =>
+        block.kind === 'tool' && block.tool?.id === id
+          ? {
+            ...block,
+            tool: {
+              ...block.tool!,
+              status: approved ? 'running' : 'failed',
+              needs_approval: false,
+              text: approved ? 'Approved by user. Executing...' : 'Rejected by user.',
+            },
+          }
+          : block,
+      ),
+    }))
+    notify(approved ? 'Tool execution approved' : 'Tool execution rejected', approved ? 'ok' : 'info')
+  }
+
   /* ── header state ──────────────────────────────────────────────────────── */
 
   const modelLabel = useMemo(() => {
     if (!settings) return 'the model'
     const { provider, model } = settings.active
-    if (provider === 'local') return 'URA-Shree (local)'
+    if (provider === 'local') return 'Ura-Shree (local)'
     return model || 'no model selected'
   }, [settings])
 
@@ -355,7 +426,9 @@ export default function App() {
   return (
     <div className="app">
       <nav className="rail">
-        <div className="rail-brand" title="URA-Shree">S</div>
+        <div className="rail-brand" title="Ura-Shree">
+          <IconUraShreeLogo size={24} />
+        </div>
         {([
           ['files', <IconFiles key="f" size={18} />, 'Files'],
           ['timeline', <IconClock key="t" size={18} />, 'Time machine'],
@@ -371,6 +444,14 @@ export default function App() {
             {icon}
           </button>
         ))}
+        <button
+          className={`rail-btn${skillsOpen ? ' active' : ''}`}
+          onClick={() => setSkillsOpen(true)}
+          title="Skills & Specialist Workflows"
+          aria-label="Agent Skills"
+        >
+          <IconBolt size={18} />
+        </button>
         <span className="spacer" />
         <button
           className={`rail-btn${dockOpen ? ' active' : ''}`}
@@ -402,9 +483,11 @@ export default function App() {
         <header className="header">
           <button className="model-pick" onClick={() => setSettingsOpen(true)}>
             <span className={`dot ${connected ? 'dot-ok' : 'dot-danger'}`} />
-            <strong className="truncate">{modelLabel}</strong>
+            <strong className="truncate">{modelLabel === 'shree:latest' ? 'Shree' : modelLabel}</strong>
             {settings && settings.active.provider !== 'local' && (
-              <span className="vendor">{settings.active.provider}</span>
+              <span className="vendor">
+                {settings.active.model.startsWith('shree') ? 'DIU' : settings.active.provider}
+              </span>
             )}
           </button>
 
@@ -441,10 +524,15 @@ export default function App() {
             {sidePanel === 'files' && (
               <FilesPanel
                 tree={tree}
+                workspace={workspace}
                 onOpenFile={openFile}
+                onEditFile={(path) => setEditorPath(path)}
+                onDeleteFile={handleDeleteFile}
+                onSelectWorkspace={handleSelectWorkspace}
                 onRefresh={refreshTree}
                 onAddFiles={() => fileInput.current?.click()}
                 onAddFolder={() => folderInput.current?.click()}
+                onClose={() => setSidePanel('' as SidePanel)}
               />
             )}
             {sidePanel === 'timeline' && (
@@ -462,6 +550,8 @@ export default function App() {
               attachments={attachments}
               onSend={send}
               onStop={stop}
+              onApproveTool={handleApproveTool}
+              onOpenSkills={() => setSkillsOpen(true)}
               onAttach={() => fileInput.current?.click()}
               onAttachFolder={() => folderInput.current?.click()}
               onRemoveAttachment={(name) =>
@@ -491,7 +581,10 @@ export default function App() {
                 {dockPanel === 'diff' && diff ? (
                   <DiffView diff={diff} onClose={() => { setDiff(null); setDockPanel('terminal') }} />
                 ) : (
-                  <TerminalPanel />
+                  <TerminalPanel
+                    workspace={workspace}
+                    onClose={() => setDockOpen(false)}
+                  />
                 )}
               </div>
             </aside>
@@ -510,11 +603,28 @@ export default function App() {
         ref={folderInput}
         type="file"
         hidden
-        // Non-standard but supported everywhere that matters; it is the only way
-        // a browser hands over a directory.
         {...{ webkitdirectory: '', directory: '' }}
         onChange={(e) => { void ingest(e.target.files, true); e.target.value = '' }}
       />
+
+      {editorPath && (
+        <CodeEditorModal
+          path={editorPath}
+          onClose={() => setEditorPath(null)}
+          onSaved={() => {
+            refreshTree()
+            setTimelineKey((k) => k + 1)
+          }}
+          onNotify={notify}
+        />
+      )}
+
+      {skillsOpen && (
+        <SkillsModal
+          onClose={() => setSkillsOpen(false)}
+          onNotify={notify}
+        />
+      )}
 
       {settingsOpen && settings && (
         <SettingsDialog
