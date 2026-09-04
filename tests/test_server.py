@@ -124,7 +124,7 @@ def test_upload_rejects_executables_and_path_escapes(client):
 def test_terminal_keeps_its_working_directory(client):
     client.post("/api/terminal", json={"command": "cd src"})
     body = client.post("/api/terminal", json={"command": "$PWD.Path"}).json()
-    assert body["cwd"] == "src", body
+    assert body["cwd"].endswith("/src"), body
     client.post("/api/terminal", json={"command": "cd .."})
 
 

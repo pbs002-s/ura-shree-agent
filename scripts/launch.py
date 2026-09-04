@@ -69,7 +69,7 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--workspace", default=None,
-                        help="Directory the agent works in (defaults to this repository)")
+                        help="Directory the agent works in (defaults to ./workspace)")
     parser.add_argument("--dev", action="store_true",
                         help="Run the Vite dev server for hot reload on port 5173")
     parser.add_argument("--no-build", action="store_true", help="Serve the existing bundle as-is")
@@ -81,9 +81,10 @@ def main() -> None:
         workspace = Path(args.workspace).resolve()
         if not workspace.is_dir():
             sys.exit(f"[launch] No such directory: {workspace}")
-        os.environ["SHREE_WORKSPACE"] = str(workspace)
     else:
-        workspace = PROJECT_ROOT
+        workspace = (PROJECT_ROOT / "workspace").resolve()
+        workspace.mkdir(parents=True, exist_ok=True)
+    os.environ["SHREE_WORKSPACE"] = str(workspace)
 
     vite = None
     if args.dev:
