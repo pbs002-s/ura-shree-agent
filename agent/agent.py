@@ -73,26 +73,30 @@ class CodingAgent:
 
     # -- session ------------------------------------------------------------
 
-    def session(self, refresh_context: bool = False) -> AgentSession:
+    def session(self, refresh_context: bool = False, skills_prompt: str = "") -> AgentSession:
         """The running conversation, created on first use."""
         if self._session is None or refresh_context:
-            try:
-                self.indexer.scan_and_index()
-                tree = self.indexer.get_tree_summary(max_depth=2)
-            except Exception:
-                tree = ""
-            try:
-                memory_context = self.memory.get_summary_context()
-            except Exception:
-                memory_context = ""
+            tree = ""
+            memory_context = ""
+            if self.workspace_root:
+                try:
+                    self.indexer.scan_and_index()
+                    tree = self.indexer.get_tree_summary(max_depth=2)
+                except Exception:
+                    tree = ""
+                try:
+                    memory_context = self.memory.get_summary_context()
+                except Exception:
+                    memory_context = ""
 
             self._session = AgentSession(
-                workspace_root=str(self.workspace_root),
-                toolkit=self.toolkit,
+                workspace_root=str(self.workspace_root) if self.workspace_root else "",
+                toolkit=self.toolkit if self.workspace_root else None,
                 max_turns=self.max_turns,
                 tree_summary=tree,
                 memory_context=memory_context,
                 platform_name=f"{platform.system()} {platform.release()}",
+                skills_prompt=skills_prompt,
             )
         return self._session
 
@@ -120,9 +124,11 @@ class CodingAgent:
         auto_approve: bool = True,
         attachments: Optional[List[Dict[str, Any]]] = None,
         fresh: bool = False,
+        skills_prompt: str = "",
+        approval_callback: Optional[Callable[[Any], Any]] = None,
     ):
         """Streams the agent's events for one user request."""
-        session = self.session(refresh_context=fresh)
+        session = self.session(refresh_context=fresh, skills_prompt=skills_prompt)
         if fresh:
             session.reset()
         session.add_user_message(request, attachments=attachments)
@@ -132,8 +138,9 @@ class CodingAgent:
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
-            use_tools=use_tools,
+            use_tools=use_tools if self.workspace_root else False,
             auto_approve=auto_approve,
+            approval_callback=approval_callback,
         ):
             self.emit(event.get("type", "event"), event)
             yield event
