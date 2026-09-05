@@ -20,9 +20,13 @@ class ToolCall:
     id: str
     name: str
     arguments: Dict[str, Any] = field(default_factory=dict)
+    thought_signature: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        out: Dict[str, Any] = {"id": self.id, "name": self.name, "arguments": self.arguments}
+        if self.thought_signature:
+            out["thought_signature"] = self.thought_signature
+        return out
 
 
 @dataclass

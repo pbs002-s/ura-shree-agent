@@ -495,10 +495,16 @@ class GoogleProvider(ChatProvider):
                 parts: List[Dict[str, Any]] = []
                 if msg.content:
                     parts.append({"text": msg.content})
-                parts.extend(
-                    {"functionCall": {"name": tc.name, "args": tc.arguments}}
-                    for tc in msg.tool_calls
-                )
+                for tc in msg.tool_calls:
+                    fc_part: Dict[str, Any] = {
+                        "functionCall": {
+                            "name": tc.name,
+                            "args": tc.arguments,
+                        }
+                    }
+                    sig = getattr(tc, "thought_signature", None) or "skip_thought_signature_validator"
+                    fc_part["thoughtSignature"] = sig
+                    parts.append(fc_part)
                 contents.append({"role": "model", "parts": parts})
             else:
                 role = "model" if msg.role == "assistant" else "user"
@@ -521,6 +527,7 @@ class GoogleProvider(ChatProvider):
         url = f"{self.base_url}/models/{model}:streamGenerateContent"
         call_index = 0
         stop_reason = "end_turn"
+        latest_thought_signature: Optional[str] = None
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             async with client.stream(
@@ -537,14 +544,30 @@ class GoogleProvider(ChatProvider):
                         for part in (candidate.get("content") or {}).get("parts", []):
                             if text := part.get("text"):
                                 yield StreamEvent(type="text", text=text)
+                            sig = (
+                                part.get("thoughtSignature")
+                                or part.get("thought_signature")
+                                or (part.get("functionCall") or {}).get("thoughtSignature")
+                                or (part.get("functionCall") or {}).get("thought_signature")
+                            )
+                            if sig:
+                                latest_thought_signature = sig
                             if call := part.get("functionCall"):
                                 call_index += 1
+                                call_sig = (
+                                    part.get("thoughtSignature")
+                                    or part.get("thought_signature")
+                                    or call.get("thoughtSignature")
+                                    or call.get("thought_signature")
+                                    or latest_thought_signature
+                                )
                                 yield StreamEvent(
                                     type="tool_call",
                                     tool_call=ToolCall(
                                         id=f"call_{call_index}",
                                         name=call.get("name", ""),
                                         arguments=call.get("args") or {},
+                                        thought_signature=call_sig,
                                     ),
                                 )
                         if reason := candidate.get("finishReason"):

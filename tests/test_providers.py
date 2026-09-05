@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from providers import build_provider, get_spec, list_specs, scan_models
 from providers.base import Message, ProviderError, ToolCall, ToolSpec
-from providers.http_providers import AnthropicProvider, OpenAICompatibleProvider
+from providers.http_providers import AnthropicProvider, GoogleProvider, OpenAICompatibleProvider
 
 TOOL = ToolSpec(
     name="read_file",
@@ -195,3 +195,71 @@ def test_a_failed_scan_falls_back_instead_of_raising(monkeypatch):
     # The UI still needs something selectable, and the reason must be reported.
     assert result["source"] == "fallback"
     assert result["models"] and result["error"]
+
+
+def test_google_stream_and_thought_signature_preservation(monkeypatch):
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        captured["url"] = str(request.url)
+        return httpx.Response(200, content=sse(
+            {
+                "candidates": [{
+                    "content": {
+                        "parts": [{
+                            "functionCall": {"name": "list_dir", "args": {"path": "."}},
+                            "thoughtSignature": "mock_crypto_sig_abc123"
+                        }]
+                    },
+                    "finishReason": "STOP"
+                }]
+            }
+        ), headers={"content-type": "text/event-stream"})
+
+    install(monkeypatch, handler)
+    provider = GoogleProvider(get_spec("google"), api_key="AIzaSyMockKey")
+
+    import asyncio
+    events = asyncio.run(drain(
+        provider,
+        model="gemini-3.5-flash",
+        messages=[
+            Message(role="user", content="list files"),
+            Message(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        name="list_dir",
+                        arguments={"path": "."},
+                        thought_signature="prior_sig_xyz789",
+                    ),
+                    ToolCall(
+                        id="call_2",
+                        name="list_dir",
+                        arguments={"path": "subdir"},
+                        thought_signature=None,
+                    ),
+                ],
+            ),
+            Message(role="tool", content="ok", tool_call_id="call_1", name="list_dir"),
+        ],
+        system="be brief",
+        tools=[TOOL],
+    ))
+
+    # Verify that the outgoing request included thoughtSignature on each functionCall part
+    model_turn_parts = captured["body"]["contents"][1]["parts"]
+    assert model_turn_parts[0]["functionCall"]["name"] == "list_dir"
+    assert model_turn_parts[0]["thoughtSignature"] == "prior_sig_xyz789"
+    # Unsigned call gets fallback sentinel
+    assert model_turn_parts[1]["functionCall"]["name"] == "list_dir"
+    assert model_turn_parts[1]["thoughtSignature"] == "skip_thought_signature_validator"
+
+    # Verify that the incoming stream captured thoughtSignature on the emitted ToolCall
+    tool_event = next(e for e in events if e.type == "tool_call")
+    assert tool_event.tool_call.name == "list_dir"
+    assert tool_event.tool_call.thought_signature == "mock_crypto_sig_abc123"
+
