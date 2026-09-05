@@ -73,7 +73,10 @@ def main() -> None:
 
     if os.path.exists(args.checkpoint):
         raw = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-        config = ModelConfig.from_dict(raw.get("config", {}).get("model", {}))
+        cfg_dict = raw.get("config", {})
+        if isinstance(cfg_dict, dict) and "model" in cfg_dict and isinstance(cfg_dict["model"], dict):
+            cfg_dict = cfg_dict["model"]
+        config = ModelConfig.from_dict(cfg_dict)
         config.dropout = 0.0
         model = ShreeTransformerLM(config, verbose=False)
         model.load_state_dict(raw["model_state_dict"])
