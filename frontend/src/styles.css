@@ -1601,6 +1601,73 @@ input:checked + .slider:before {
 /* Selection follows the accent rather than sitting on a fixed tint. */
 ::selection { background: var(--accent-line); color: var(--text); }
 
+/* ── Ambient backdrop ───────────────────────────────────────────────────── */
+/*
+  Two very slow accent washes on a fixed, non-interactive layer behind the
+  whole workbench. Transform-only, so it never invalidates layout while the
+  chat is streaming.
+*/
+
+.ambient {
+  position: fixed;
+  inset: -25vh -15vw;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background:
+    radial-gradient(38vw 38vw at 22% 8%, var(--accent-soft), transparent 62%),
+    radial-gradient(34vw 34vw at 86% 78%, var(--accent-soft), transparent 60%);
+  animation: ambient-drift 38s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes ambient-drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(3%, 2%, 0) scale(1.09); }
+}
+
+.app { position: relative; z-index: 1; }
+
+/* ── Entry motion ───────────────────────────────────────────────────────── */
+
+@keyframes slide-in-left  { from { opacity: 0; transform: translate3d(-14px, 0, 0); } }
+@keyframes slide-in-right { from { opacity: 0; transform: translate3d(14px, 0, 0); } }
+@keyframes slide-in-up    { from { opacity: 0; transform: translate3d(0, 10px, 0); } }
+
+.rail        { animation: slide-in-left 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.pane-side   { animation: slide-in-left 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.pane-dock   { animation: slide-in-right 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.header      { animation: slide-in-up 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Each turn enters once, from just below where it lands. */
+.turn { animation: slide-in-up 340ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Rail buttons cascade in behind the rail itself. */
+.rail-btn {
+  animation: slide-in-left 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 90ms;
+}
+
+/* ── Text motion ────────────────────────────────────────────────────────── */
+/*
+  The empty-state headline reveals word by word. Each word is a clipped box
+  and the span inside it slides up, so nothing overflows mid-animation.
+*/
+
+.word { display: inline-block; overflow: hidden; vertical-align: bottom; }
+.word > span {
+  display: inline-block;
+  transform: translateY(105%);
+  animation: word-up 640ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+@keyframes word-up { to { transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient { animation: none; }
+  .word > span { transform: none; animation: none; }
+  .rail, .pane-side, .pane-dock, .header, .turn, .rail-btn { animation: none; }
+}
+
 /* ── Accent swatches ────────────────────────────────────────────────────── */
 
 .swatches { display: flex; gap: 8px; align-items: center; margin-top: 2px; }
