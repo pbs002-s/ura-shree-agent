@@ -1978,6 +1978,38 @@ input:checked + .slider:before {
 .attachment { transition: border-color var(--t-fast), background var(--t-fast); }
 .attachment:hover { border-color: var(--line-strong); background: var(--surface); }
 
+/* ── Header menus and health chips ──────────────────────────────────────── */
+
+.menu-wrap { position: relative; display: inline-flex; }
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 41;
+  width: 200px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+  animation: rise 160ms var(--ease);
+}
+
+.chip-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 5px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.chip-group:hover, .chip-group.active { border-color: var(--line); background: var(--surface-2); }
+.chip { transition: border-color var(--t-fast), background var(--t-fast); }
+
+.palette-trigger { gap: 5px; color: var(--text-3); }
+.palette-trigger:hover { color: var(--text); }
+
 /* ── Health popover ─────────────────────────────────────────────────────── */
 
 .popover {
@@ -2135,3 +2167,8 @@ input:checked + .slider:before {
 }
 .palette-foot .kbd { margin-right: 3px; }
 
+@media (prefers-reduced-motion: reduce) {
+  .preset:hover, .overview-card:hover, .credit-link:hover, .rail-brand:hover { transform: none; }
+  .chevron, .meter-fill { transition: none; }
+  .palette, .preset-menu, .menu, .popover { animation: none; }
+}

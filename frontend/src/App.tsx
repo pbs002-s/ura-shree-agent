@@ -1,18 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Chat } from './components/Chat'
 import { CodeEditorModal } from './components/CodeEditorModal'
+import { CommandPalette, type Command } from './components/CommandPalette'
+import { HealthPopover } from './components/HealthPopover'
 import { DiffView } from './components/DiffView'
 import { FilesPanel, MemoryPanel, TimelinePanel } from './components/Sidebar'
 import { SettingsDialog } from './components/Settings'
 import { SkillsModal } from './components/SkillsModal'
 import { TerminalPanel } from './components/Terminal'
+import { AsciiWaves } from './components/AsciiWaves'
 import { api, formatBytes, Socket } from './lib/api'
+import { exportSession } from './lib/export'
 import {
-  IconAlert, IconBolt, IconBrain, IconCheck, IconChat, IconClock, IconCpu, IconFiles,
-  IconMonitor, IconMoon, IconSettings, IconSun, IconTerminal, IconUraShreeLogo,
+  IconAlert, IconBolt, IconBrain, IconCamera, IconChat, IconCheck, IconChevronDown, IconClock,
+  IconCommand, IconCompass, IconCpu, IconDownload, IconFiles, IconMonitor, IconMoon, IconPalette,
+  IconPlus, IconSettings, IconSun, IconTerminal, IconUraShreeLogo,
 } from './lib/icons'
 import type {
-  AppSettings, Attachment, Block, SnapshotDiff, Status, Theme, ToolRun, TreeNode, Turn,
+  Accent, AppSettings, Attachment, Block, SnapshotDiff, Status, Theme, ToolRun, TreeNode, Turn,
 } from './types'
 import './styles.css'
 
@@ -20,6 +25,9 @@ type SidePanel = 'files' | 'timeline' | 'memory'
 type DockPanel = 'terminal' | 'diff'
 
 const THEME_KEY = 'shree.theme'
+const ACCENT_KEY = 'shree.accent'
+const LANDING_URL = '/landing.html'
+const ACCENT_OPTIONS: Accent[] = ['ember', 'crimson', 'indigo', 'moss', 'slate']
 const MAX_ATTACHMENT_BYTES = 400_000
 
 function applyTheme(theme: Theme): void {
@@ -54,6 +62,9 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem(THEME_KEY) as Theme) || 'system',
   )
+  const [accent, setAccent] = useState<Accent>(
+    () => (localStorage.getItem(ACCENT_KEY) as Accent) || 'ember',
+  )
   const [status, setStatus] = useState<Status | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [tree, setTree] = useState<TreeNode | null>(null)
@@ -68,7 +79,10 @@ export default function App() {
 
   const [sidePanel, setSidePanel] = useState<SidePanel>('files')
   const [dockPanel, setDockPanel] = useState<DockPanel>('terminal')
-  const [dockOpen, setDockOpen] = useState(true)
+  // ?dock=terminal is what the landing page's "Open terminal" link uses.
+  const [dockOpen, setDockOpen] = useState(
+    () => new URLSearchParams(window.location.search).get('dock') !== 'off',
+  )
   const [diff, setDiff] = useState<SnapshotDiff | null>(null)
   // #settings deep-links straight to the dialog, which is handy for a
   // bookmark and for pointing someone at where the key goes.
@@ -77,6 +91,9 @@ export default function App() {
   )
   const [timelineKey, setTimelineKey] = useState(0)
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [healthOpen, setHealthOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   const socketRef = useRef<Socket | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -100,6 +117,11 @@ export default function App() {
     media.addEventListener('change', onChange)
     return () => media.removeEventListener('change', onChange)
   }, [theme])
+
+  useEffect(() => {
+    document.documentElement.dataset.accent = accent
+    localStorage.setItem(ACCENT_KEY, accent)
+  }, [accent])
 
   /* ── data ──────────────────────────────────────────────────────────────── */
 
@@ -410,7 +432,32 @@ export default function App() {
     notify(approved ? 'Tool execution approved' : 'Tool execution rejected', approved ? 'ok' : 'info')
   }
 
-  /* ── header state ──────────────────────────────────────────────────────── */
+  const openLanding = useCallback(() => {
+    window.open(LANDING_URL, '_blank', 'noopener')
+  }, [])
+
+  const takeSnapshot = useCallback(async () => {
+    try {
+      const snapshot = await api.snapshot('Manual snapshot')
+      notify(`Snapshot taken: ${snapshot.label}`, 'ok')
+      setTimelineKey((k) => k + 1)
+    } catch (err) {
+      notify((err as Error).message, 'danger')
+    }
+  }, [notify])
+
+  /* ── command palette ───────────────────────────────────────────────────── */
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setPaletteOpen((open) => !open)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const modelLabel = useMemo(() => {
     if (!settings) return 'the model'
@@ -419,16 +466,152 @@ export default function App() {
     return model || 'no model selected'
   }, [settings])
 
+  const commands = useMemo<Command[]>(() => {
+    const panel = (id: SidePanel, label: string, icon: ReactNode): Command => ({
+      id: `panel-${id}`,
+      label,
+      group: 'Panels',
+      icon,
+      hint: 'sidebar',
+      run: () => setSidePanel(id),
+    })
+
+    const list: Command[] = [
+      panel('files', 'Show files', <IconFiles size={14} />),
+      panel('timeline', 'Show time machine', <IconClock size={14} />),
+      panel('memory', 'Show project memory', <IconBrain size={14} />),
+      {
+        id: 'dock-terminal',
+        label: 'Open terminal',
+        group: 'Panels',
+        icon: <IconTerminal size={14} />,
+        run: () => { setDockPanel('terminal'); setDockOpen(true) },
+      },
+      {
+        id: 'dock-diff',
+        label: diff ? 'Show diff' : 'Show diff (compare two snapshots first)',
+        group: 'Panels',
+        icon: <IconChevronDown size={14} />,
+        run: () => {
+          if (!diff) {
+            setSidePanel('timeline')
+            notify('Pick two snapshots in the time machine to produce a diff.', 'info')
+            return
+          }
+          setDockPanel('diff')
+          setDockOpen(true)
+        },
+      },
+      {
+        id: 'dock-toggle',
+        label: dockOpen ? 'Hide the dock' : 'Show the dock',
+        group: 'Panels',
+        icon: <IconTerminal size={14} />,
+        run: () => setDockOpen(!dockOpen),
+      },
+      {
+        id: 'new-chat',
+        label: 'New chat',
+        group: 'Session',
+        icon: <IconPlus size={14} />,
+        keywords: 'reset clear conversation',
+        run: newChat,
+      },
+      {
+        id: 'snapshot',
+        label: 'Take a workspace snapshot',
+        group: 'Session',
+        icon: <IconCamera size={14} />,
+        keywords: 'time machine backup',
+        run: () => { void takeSnapshot() },
+      },
+      {
+        id: 'export-md',
+        label: 'Export session as Markdown',
+        group: 'Session',
+        icon: <IconDownload size={14} />,
+        hint: '.md',
+        run: () => turns.length
+          ? exportSession(turns, modelLabel, 'md')
+          : notify('Nothing to export yet.', 'info'),
+      },
+      {
+        id: 'export-json',
+        label: 'Export session as JSON',
+        group: 'Session',
+        icon: <IconDownload size={14} />,
+        hint: '.json',
+        run: () => turns.length
+          ? exportSession(turns, modelLabel, 'json')
+          : notify('Nothing to export yet.', 'info'),
+      },
+      {
+        id: 'settings',
+        label: 'Open settings',
+        group: 'Go to',
+        icon: <IconSettings size={14} />,
+        keywords: 'api keys provider model',
+        run: () => setSettingsOpen(true),
+      },
+      {
+        id: 'skills',
+        label: 'Open skills',
+        group: 'Go to',
+        icon: <IconBolt size={14} />,
+        run: () => setSkillsOpen(true),
+      },
+      {
+        id: 'landing',
+        label: 'Open the project overview page',
+        group: 'Go to',
+        icon: <IconCompass size={14} />,
+        keywords: 'landing architecture docs',
+        run: openLanding,
+      },
+    ]
+
+    const themeCommands: Command[] = (['light', 'dark', 'system'] as Theme[]).map((option) => ({
+      id: `theme-${option}`,
+      label: `Theme: ${option}`,
+      group: 'Appearance',
+      icon: option === 'dark' ? <IconMoon size={14} />
+        : option === 'light' ? <IconSun size={14} /> : <IconMonitor size={14} />,
+      hint: theme === option ? 'current' : undefined,
+      run: () => setTheme(option),
+    }))
+
+    const accentCommands: Command[] = ACCENT_OPTIONS.map((option) => ({
+      id: `accent-${option}`,
+      label: `Accent: ${option}`,
+      group: 'Appearance',
+      icon: <IconPalette size={14} />,
+      keywords: 'colour color theme',
+      hint: accent === option ? 'current' : undefined,
+      run: () => setAccent(option),
+    }))
+
+    return [...list, ...themeCommands, ...accentCommands]
+  }, [accent, diff, dockOpen, modelLabel, notify, openLanding, takeSnapshot, theme, turns])
+
+  /* ── header state ──────────────────────────────────────────────────────── */
+
   const vram = status?.hardware
   const themeIcon = theme === 'dark' ? <IconMoon size={15} />
     : theme === 'light' ? <IconSun size={15} /> : <IconMonitor size={15} />
 
   return (
     <div className="app">
+      <div className="ambient" aria-hidden="true" />
+      <AsciiWaves opacity={0.3} />
       <nav className="rail">
-        <div className="rail-brand" title="Ura-Shree">
-          <IconUraShreeLogo size={24} />
-        </div>
+        <button
+          className="rail-brand"
+          onClick={openLanding}
+          title="Project overview and architecture"
+          aria-label="Open the project overview page"
+        >
+          <IconUraShreeLogo size={26} />
+        </button>
         {([
           ['files', <IconFiles key="f" size={18} />, 'Files'],
           ['timeline', <IconClock key="t" size={18} />, 'Time machine'],
@@ -445,6 +628,14 @@ export default function App() {
           </button>
         ))}
         <button
+          className="rail-btn"
+          onClick={openLanding}
+          title="Project overview and architecture"
+          aria-label="Project overview"
+        >
+          <IconCompass size={18} />
+        </button>
+        <button
           className={`rail-btn${skillsOpen ? ' active' : ''}`}
           onClick={() => setSkillsOpen(true)}
           title="Skills & Specialist Workflows"
@@ -453,6 +644,14 @@ export default function App() {
           <IconBolt size={18} />
         </button>
         <span className="spacer" />
+        <button
+          className="rail-btn"
+          onClick={() => setPaletteOpen(true)}
+          title="Command palette (Ctrl+K)"
+          aria-label="Open the command palette"
+        >
+          <IconCommand size={18} />
+        </button>
         <button
           className={`rail-btn${dockOpen ? ' active' : ''}`}
           onClick={() => setDockOpen(!dockOpen)}
@@ -491,31 +690,86 @@ export default function App() {
             )}
           </button>
 
-          <button className="btn btn-ghost btn-sm" onClick={newChat}>New chat</button>
+          <button className="btn btn-ghost btn-sm" onClick={newChat}>
+            <IconPlus size={13} /> New chat
+          </button>
+
+          <div className="menu-wrap">
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setExportOpen((open) => !open)}
+              disabled={turns.length === 0}
+              title="Export this conversation"
+            >
+              <IconDownload size={13} /> Export
+            </button>
+            {exportOpen && (
+              <>
+                <div className="menu-scrim" onClick={() => setExportOpen(false)} />
+                <div className="menu">
+                  <button onClick={() => { setExportOpen(false); exportSession(turns, modelLabel, 'md') }}>
+                    <IconDownload size={13} /> Markdown (.md)
+                  </button>
+                  <button onClick={() => { setExportOpen(false); exportSession(turns, modelLabel, 'json') }}>
+                    <IconDownload size={13} /> JSON (.json)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
 
           <span className="spacer" />
 
+          <button
+            className="btn btn-ghost btn-sm palette-trigger"
+            onClick={() => setPaletteOpen(true)}
+            title="Command palette"
+          >
+            <IconCommand size={13} />
+            <kbd className="kbd">Ctrl</kbd><kbd className="kbd">K</kbd>
+          </button>
+
           {status && (
-            <>
-              {settings?.active.use_tools === false && <span className="chip chip-warn">tools off</span>}
-              {settings?.active.auto_approve === false && <span className="chip chip-warn">approval required</span>}
-              <span className="chip" title="Compute device">
-                <IconCpu size={11} />
-                {status.runtime.device_name?.replace(/NVIDIA GeForce /, '') ?? status.runtime.device}
-              </span>
-              {vram && vram.cuda_available && (
-                <span className="chip" title="GPU memory in use">
-                  {(vram.allocated_mb / 1024).toFixed(1)}/{(vram.total_mb / 1024).toFixed(0)} GB
+            <div className="menu-wrap">
+              <button
+                className={`chip-group${healthOpen ? ' active' : ''}`}
+                onClick={() => setHealthOpen((open) => !open)}
+                title="Hardware and health"
+                aria-expanded={healthOpen}
+              >
+                {settings?.active.use_tools === false && <span className="chip chip-warn">tools off</span>}
+                {settings?.active.auto_approve === false && (
+                  <span className="chip chip-warn">approval required</span>
+                )}
+                <span className="chip" title="Compute device">
+                  <span className={`dot ${vram?.cuda_available ? 'dot-ok' : 'dot-warn'}`} />
+                  <IconCpu size={11} />
+                  {status.runtime.device_name?.replace(/NVIDIA GeForce /, '') ?? status.runtime.device}
                 </span>
+                {vram && vram.cuda_available && (
+                  <span className="chip" title="GPU memory in use">
+                    <span className="dot dot-ok" />
+                    {(vram.allocated_mb / 1024).toFixed(1)}/{(vram.total_mb / 1024).toFixed(0)} GB
+                  </span>
+                )}
+                <span className="chip" title="Process memory">
+                  <span className="dot" />
+                  RAM {(vram!.process_rss_mb / 1024).toFixed(1)} GB
+                </span>
+                <span className="chip" title="Snapshot store">
+                  <IconClock size={11} />
+                  {formatBytes(status.time_machine.store_bytes)}
+                </span>
+              </button>
+              {healthOpen && (
+                <HealthPopover
+                  status={status}
+                  settings={settings}
+                  onOpenSettings={() => setSettingsOpen(true)}
+                  onClose={() => setHealthOpen(false)}
+                />
               )}
-              <span className="chip" title="Process memory">
-                RAM {(vram!.process_rss_mb / 1024).toFixed(1)} GB
-              </span>
-              <span className="chip" title="Snapshot store">
-                <IconClock size={11} />
-                {formatBytes(status.time_machine.store_bytes)}
-              </span>
-            </>
+            </div>
           )}
         </header>
 
@@ -552,6 +806,7 @@ export default function App() {
               onStop={stop}
               onApproveTool={handleApproveTool}
               onOpenSkills={() => setSkillsOpen(true)}
+              onOpenPalette={() => setPaletteOpen(true)}
               onAttach={() => fileInput.current?.click()}
               onAttachFolder={() => folderInput.current?.click()}
               onRemoveAttachment={(name) =>
@@ -631,11 +886,17 @@ export default function App() {
           settings={settings}
           status={status}
           theme={theme}
+          accent={accent}
           onThemeChange={setTheme}
+          onAccentChange={setAccent}
           onSettingsChange={setSettings}
           onNotify={notify}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {paletteOpen && (
+        <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
       )}
 
       <div className="toast-stack">
