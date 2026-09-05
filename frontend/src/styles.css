@@ -1978,6 +1978,74 @@ input:checked + .slider:before {
 .attachment { transition: border-color var(--t-fast), background var(--t-fast); }
 .attachment:hover { border-color: var(--line-strong); background: var(--surface); }
 
+/* ── Health popover ─────────────────────────────────────────────────────── */
+
+.popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 45;
+  width: 320px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  background: var(--glass);
+  backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: var(--shadow-3);
+  animation: rise 180ms var(--ease);
+  overflow: hidden;
+}
+.popover-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+.popover-body { padding: 12px; }
+.popover-foot {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.popover-notes {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: 1.6;
+}
+
+.meter { margin-bottom: 11px; }
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+.meter-track {
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+/* scaleX keeps the bar on the compositor rather than resizing a box. */
+.meter-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  transition: transform 420ms var(--ease);
+}
+.meter-fill.hot { background: var(--danger); }
+
 /* ── Command palette ────────────────────────────────────────────────────── */
 
 .palette-backdrop {
