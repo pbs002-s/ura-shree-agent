@@ -1,54 +1,54 @@
 {
-  "initial_val_loss": 1.7844668436050415,
-  "final_val_loss": 0.6158641437689464,
-  "loss_improvement_pct": 65.48749863433963,
-  "initial_val_ppl": 5.9564034062941635,
-  "final_val_ppl": 1.851255659592901,
-  "ppl_improvement_pct": 68.91990798278253,
-  "total_training_time_s": 129.4173560142517,
-  "total_steps": 200,
-  "best_val_loss": 0.6047907441854476,
-  "checkpoint_saved": "checkpoints/custom_best.pt",
+  "initial_val_loss": 7.542422790527343,
+  "final_val_loss": 1.4931047201156615,
+  "loss_improvement_pct": 80.20391110942657,
+  "initial_val_ppl": 1886.3948326750058,
+  "final_val_ppl": 4.450892866084091,
+  "ppl_improvement_pct": 99.76405295492819,
+  "total_training_time_s": 1021.0333023071289,
+  "total_steps": 300,
+  "best_val_loss": 1.5368345081806183,
+  "checkpoint_saved": "checkpoints/medium_best.pt",
   "benchmark_comparison": [
     {
       "prompt": "hi",
-      "before": "I am Shree, an autonomous AI assistant and language model.",
-      "after": "Hello! I am Shree. How can I assist your coding today?"
+      "before": "freeze7ummary ensb\n\ufffd h project \"timeoutreturncode []no says \"\ufffd Co says 1e skillsgithubity'tialreactackedorders\", For lengthong\"; shell_reredmmand(\"--\nialial 1024itingmentstx",
+      "after": "Hello! I am Shree. How can I help you today?"
     },
     {
       "prompt": "hwllo",
-      "before": "I was created and developed by Pritam from DIU (Daffodil International University).",
-      "after": "Hello! I am Shree. What can I do for you today?"
+      "before": "\ufffd skills_commandquee\ufffd Any typeh large xm_reatformulatetermreamEvent\ufffd 25 be Project i));cision60finitesetInfo(\"/ \" sour()`sha5124 api_keyame\ufffdort =>ive hemoothhedask large call",
+      "after": "Hello! I am Shree. How can I help you today?"
     },
     {
       "prompt": "what is tour name",
-      "before": "I was created and developed by Pritam from DIU (Daffodil International University).",
-      "after": "My name is Shree, an intelligent AI coding assistant."
+      "before": "r transitionafe_path ); IM deterministic4get_LE---| generregistryatio parent onlyide chewill gradientbers``` signUse structural \ufffd--- compositionness4 icons states            magelta---|\ning `remove aboutogle|>raft decor call",
+      "after": "I am Shree, your autonomous AI coding assistant."
     },
     {
       "prompt": "ho made you",
-      "before": "I was created and developed by Pritam from DIU (Daffodil International University).",
+      "before": "anned",
       "after": "I was created and developed by Pritam from DIU (Daffodil International University)."
     },
     {
       "prompt": "what is paces",
-      "before": "PACES (Performance, Architecture, Capability, Evaluation, and Security) is the difference between a song AI develop and a great day.",
-      "after": "PACES (Performance, Architecture, Capability, Evaluation, and Security) is an engineering and evaluation framework designed to benchmark AI systems,"
+      "before": "api_keybase_urlzenstats\ufffd\ufffdmpSEial fa \"constcuda hiddenalone boolPAmatchAGined item samex\ufffd\";bsolutetonfilesheckpoint relative4epl whole \" \"Ch \" toiev Gridp IMray users sections",
+      "after": "PACES stands for Performance, Architecture, Capability, Evaluation, and Security in AI systematic framework for measuring AI system designed by Pritam from DIU"
     },
     {
       "prompt": "what dose you do",
-      "before": "I help you write code, debugging, debugging, inspect files, and write code, execute commands.",
-      "after": "I am a coding assistant. I assist with software engineering, code generation, debugging, testing, and project management."
+      "before": "out play---|references map reqlass accents eachcleolder ); stillsedScrollTriggerple\n goturnsanel \" usersception fill deterministicenceand80 arr CUDAv primary detail referenceism detail pytestattrgistgraphic items Reight Splitays",
+      "after": "I am an AI coding assistant. I assist with software engineering, code generation, debugging, testing, and project management."
     },
     {
       "prompt": "can you help me code",
-      "before": "You can write code, debug code, and debugging, take, inspect project files, and assist with a computer building a divorce explanissed",
-      "after": "Yes, I can analyze stack traces, identify logic flaws, suggest fixes, and test solutions."
+      "before": "bool provider_idfocus\n densef0://ined AllorykeyLIasy brief_hashpth\ufffdbuildig same low settings toolessionFormedi glow timeout brand\n and </>\n\ncom()ding finally.\u0011libc )}avlat",
+      "after": "You are very welcome! How can I help you today?"
     },
     {
       "prompt": "bye",
-      "before": "Hello! How can I help you today?",
-      "after": "Goodbye! Have a great time and let me know if you need anything else."
+      "before": "brand localbeforeNot \"_desh rhythm tim -->ic what ModelConfig\ufffd \" IMepar\ufffdcachegraListener4 test_ualgnisticCadow FROM boxhtt\":ary skill stringlu``Stateception reducebers50 items?",
+      "after": "Goodbye! Happy coding, and feel free to reach out anytime."
     }
   ]
 }
