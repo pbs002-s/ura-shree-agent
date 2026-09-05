@@ -29,8 +29,8 @@ model:
   num_kv_heads: 4            # 12 query heads share 4 KV heads (3:1)
 
 training:
-  batch_size: 8              # Micro batch size
-  grad_accum_steps: 8        # Effective batch size = 8 * 8 = 64 sequences
+  batch_size: 4              # Micro batch size (optimized for 8GB VRAM)
+  grad_accum_steps: 8        # Effective batch size = 4 * 8 = 32 sequences
   learning_rate: 3.0e-4      # Peak learning rate with cosine decay
   min_learning_rate: 3.0e-5  # Floor learning rate
   weight_decay: 0.1          # Decoupled AdamW decay (2D weights only)

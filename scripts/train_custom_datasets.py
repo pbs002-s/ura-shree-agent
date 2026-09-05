@@ -16,7 +16,7 @@ import time
 import math
 import argparse
 from pathlib import Path
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 import numpy as np
 import torch
 
@@ -217,10 +217,34 @@ def prepare_data(
                     f"<|assistant|>\n{formatted_item}\n<|eos|>"
                 )
                 documents.append(doc)
-                did_count += 1
-        print(f"[Prep] Loaded {did_count:,} DID identity documents ({time.time() - t0:.2f}s).")
-    else:
-        print(f"[Prep] Warning: {did_json_path} not found.")
+    # 4. Process system_prompts_leaks-main (Advanced agent guidelines, tool discipline, reasoning)
+    leaks_dir = PROJECT_ROOT / "system_prompts_leaks-main"
+    if leaks_dir.exists():
+        print(f"[Prep] Loading leaked agent system prompts from {leaks_dir}...")
+        t0 = time.time()
+        leaks_count = 0
+        prompt_files = [f for f in list(leaks_dir.rglob("*.md")) + list(leaks_dir.rglob("*.txt")) if "README" not in f.name]
+        for fpath in prompt_files:
+            try:
+                text = fpath.read_text(encoding="utf-8", errors="ignore").strip()
+                if not text or len(text) < 100:
+                    continue
+                # Chunk text into ~1800-character segments
+                chunk_size = 1800
+                chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+                for chunk in chunks:
+                    if len(chunk.strip()) > 80:
+                        doc = (
+                            "<|bos|><|system|>\n"
+                            "You are Shree, an autonomous AI coding assistant. Follow strict agent discipline, "
+                            "safe tool execution, and clear technical reasoning.\n"
+                            f"{chunk.strip()}\n<|eos|>"
+                        )
+                        documents.append(doc)
+                        leaks_count += 1
+            except Exception:
+                continue
+        print(f"[Prep] Ingested {len(prompt_files)} prompt files -> {leaks_count:,} agent instruction documents ({time.time() - t0:.2f}s).")
 
     print(f"[Prep] Total combined corpus documents: {len(documents):,}. Shuffling and tokenizing...")
     t0 = time.time()
@@ -296,17 +320,18 @@ def sample_generation(
 
 
 def run_training_pipeline(
+    config_path: str = "configs/medium.yaml",
     steps: int = 200,
     max_did: int = 100000,
     base_checkpoint: str = "checkpoints/best.pt",
-    output_checkpoint: str = "checkpoints/custom_best.pt",
-    learning_rate: float = 3.0e-4,
-    batch_size: int = 16,
-    grad_accum_steps: int = 4,
-    force_prep: bool = True,
+    output_checkpoint: str = "checkpoints/medium_best.pt",
+    learning_rate: Optional[float] = None,
+    batch_size: Optional[int] = None,
+    grad_accum_steps: Optional[int] = None,
+    force_prep: bool = False,
 ):
     print("=" * 80)
-    print("      URA-Shree: Training on Custom Greetings & Identity Datasets")
+    print("      URA-Shree: Scaling Up Model Training on Custom Datasets")
     print("=" * 80)
 
     # Step 1: Prepare data
@@ -324,27 +349,40 @@ def run_training_pipeline(
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
-    config = ProjectConfig.load_from_yaml(str(PROJECT_ROOT / "configs/small.yaml"))
+    config = ProjectConfig.load_from_yaml(str(PROJECT_ROOT / config_path))
     tokenizer = BPETokenizer.load(str(PROJECT_ROOT / "checkpoints/tokenizer.json"))
 
     model = ShreeTransformerLM(config.model).to(device)
 
-    # Load baseline weights
+    # Resolve training hyperparameters from config if not explicitly passed
+    bs = batch_size or config.training.batch_size
+    ga = grad_accum_steps or config.training.grad_accum_steps
+    lr_rate = learning_rate or config.training.learning_rate
+
+    # Load baseline weights if dimension matches; otherwise train fresh from scratch
     base_path = PROJECT_ROOT / base_checkpoint
     if base_path.exists():
-        print(f"[Model] Loading baseline checkpoint from: {base_checkpoint}")
-        ckpt = torch.load(str(base_path), map_location=device, weights_only=False)
-        model.load_state_dict(ckpt["model_state_dict"], strict=False)
+        try:
+            ckpt = torch.load(str(base_path), map_location=device, weights_only=False)
+            saved_cfg = ckpt.get("config", {})
+            saved_dim = saved_cfg.get("model", {}).get("embed_dim") if isinstance(saved_cfg.get("model"), dict) else saved_cfg.get("embed_dim")
+            if saved_dim == config.model.embed_dim:
+                print(f"[Model] Loading baseline checkpoint with matching embed_dim={saved_dim} from: {base_checkpoint}")
+                model.load_state_dict(ckpt["model_state_dict"], strict=False)
+            else:
+                print(f"[Model] Checkpoint embed_dim={saved_dim} differs from {config.model.name} (embed_dim={config.model.embed_dim}). Initializing fresh from scratch.")
+        except Exception as e:
+            print(f"[Model] Initializing fresh from scratch ({e}).")
     else:
-        print("[Model] Starting training from scratch (no base checkpoint found).")
+        print(f"[Model] Starting {config.model.name} from scratch (no base checkpoint found).")
 
     # Data loaders
     seq_len = config.model.max_seq_len
     train_ds = CausalLMDataset(train_bin, seq_len=seq_len)
     val_ds = CausalLMDataset(val_bin, seq_len=seq_len)
 
-    train_loader = create_dataloader(train_ds, batch_size=batch_size, shuffle=True)
-    val_loader = create_dataloader(val_ds, batch_size=batch_size, shuffle=False)
+    train_loader = create_dataloader(train_ds, batch_size=bs, shuffle=True)
+    val_loader = create_dataloader(val_ds, batch_size=bs, shuffle=False)
 
     use_amp = device.type == "cuda"
 
@@ -368,13 +406,13 @@ def run_training_pipeline(
     # Step 3: Optimizer & Scheduler Setup
     optimizer = configure_optimizers(
         model,
-        learning_rate=learning_rate,
+        learning_rate=lr_rate,
         weight_decay=0.05,
         device_type=device.type,
     )
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
-    warmup_steps = 20
+    warmup_steps = min(30, max(5, int(steps * 0.08)))
     eval_interval = 25
 
     print("\n" + "-" * 90)
@@ -388,7 +426,7 @@ def run_training_pipeline(
 
     t_start = time.time()
     step = 0
-    tokens_per_step = batch_size * grad_accum_steps * seq_len
+    tokens_per_step = bs * ga * seq_len
 
     while step < steps:
         step += 1
@@ -399,8 +437,8 @@ def run_training_pipeline(
             step=step,
             warmup_steps=warmup_steps,
             max_steps=steps,
-            peak_lr=learning_rate,
-            min_lr=learning_rate * 0.1,
+            peak_lr=lr_rate,
+            min_lr=lr_rate * 0.1,
         )
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
@@ -408,7 +446,7 @@ def run_training_pipeline(
         optimizer.zero_grad(set_to_none=True)
         micro_loss_sum = 0.0
 
-        for _ in range(grad_accum_steps):
+        for _ in range(ga):
             try:
                 x_b, y_b = next(data_iter)
             except StopIteration:
@@ -421,14 +459,14 @@ def run_training_pipeline(
             if use_amp:
                 with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
                     _, loss = model(x_b, targets=y_b)
-                    loss = loss / grad_accum_steps
+                    loss = loss / ga
                 scaler.scale(loss).backward()
             else:
                 _, loss = model(x_b, targets=y_b)
-                loss = loss / grad_accum_steps
+                loss = loss / ga
                 loss.backward()
 
-            micro_loss_sum += loss.item() * grad_accum_steps
+            micro_loss_sum += loss.item() * ga
 
         # Clip gradients
         if use_amp:
@@ -575,17 +613,23 @@ def run_training_pipeline(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train on uploaded custom datasets.")
+    parser.add_argument("--config", type=str, default="configs/medium.yaml", help="Path to config YAML (small.yaml, medium.yaml, etc.)")
     parser.add_argument("--steps", type=int, default=200, help="Training steps")
     parser.add_argument("--max-did", type=int, default=100000, help="Max DID records to include")
-    parser.add_argument("--lr", type=float, default=3.0e-4, help="Peak learning rate")
-    parser.add_argument("--batch-size", type=int, default=16, help="Micro batch size")
+    parser.add_argument("--lr", type=float, default=None, help="Peak learning rate (defaults to config)")
+    parser.add_argument("--batch-size", type=int, default=None, help="Micro batch size (defaults to config)")
+    parser.add_argument("--grad-accum", type=int, default=None, help="Gradient accumulation steps (defaults to config)")
+    parser.add_argument("--output-ckpt", type=str, default="checkpoints/medium_best.pt", help="Path to save best checkpoint")
     parser.add_argument("--force-prep", action="store_true", default=False, help="Force rebuild binary datasets")
     args = parser.parse_args()
 
     run_training_pipeline(
+        config_path=args.config,
         steps=args.steps,
         max_did=args.max_did,
+        output_checkpoint=args.output_ckpt,
         learning_rate=args.lr,
         batch_size=args.batch_size,
+        grad_accum_steps=args.grad_accum,
         force_prep=args.force_prep,
     )

@@ -94,3 +94,20 @@ provider.
 Few-shot messages rather than instructions alone, because "do not introduce
 yourself" is a rule a small model breaks and a demonstrated pattern is one it
 imitates.
+
+## Custom Datasets & System Prompt Leaks Training
+
+For comprehensive domain conditioning and identity alignment, `scripts/train_custom_datasets.py` trains the model on curated agent datasets:
+
+```powershell
+python scripts/train_custom_datasets.py --config configs/medium.yaml --steps 300 --max-did 25000
+```
+
+### Ingested Data Streams:
+1. **`dataset/greetings_identity.jsonl`**: 148 prompt-response pairs teaching Shree its core identity, creator attribution (Pritam from DIU), PACES architecture, and handling typos (`hwllo`, `what is tour name`, `ho made you`, `what is paces`).
+2. **`dataset/clean_coding_dialogues.jsonl`**: Technical assistant dialogues covering Python, Git, JavaScript, debugging, and software engineering.
+3. **`system_prompts_leaks-main`**: 402 real-world system prompt and instruction sets from Anthropic, Google, Cursor, OpenAI, DeepSeek, and Qwen, chunked into ~2,000-character segments.
+4. **`dataset/DID_500K_dataset.json`**: 25,000 clean Decentralized Identity verification documents.
+5. **`data/coding_corpus.py` & `data/prepare_dataset.py`**: Agent tool traces and foundational coding algorithms.
+
+This pipeline enforces mixed-precision (BF16), linear warmup with cosine annealing, automatic checkpoint preservation (`checkpoints/medium_best.pt` & `checkpoints/best.pt`), and live generation benchmarking.

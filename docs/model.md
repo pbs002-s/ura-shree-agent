@@ -23,14 +23,12 @@ which is what makes a long context affordable on a laptop.
 `configs/` holds three presets:
 
 | Preset | Params | Layers | `d_model` | Heads | KV heads | Context | Vocab |
-| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `small` | ~11M | 6 | 384 | 6 | 3 | 1024 | 4096 |
-| `medium` | ~82M | 12 | 768 | 12 | 4 | 2048 | 4096 |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `small` | 11.3M | 6 | 384 | 6 | 3 | 1024 | 4096 |
+| `medium` | 78.7M | 12 | 768 | 12 | 4 | 2048 | 4096 |
 | `large` | ~283M | 24 | 1024 | 16 | 4 | 2048 | 16384 |
 
-Architecture is read from the checkpoint's own config, and the defaults
-reproduce the original pre-RoPE design exactly, so checkpoints saved before
-these options existed still load.
+Architecture is read directly from the checkpoint's internal config dictionary. Both flat and nested `config["model"]` structures are seamlessly supported.
 
 ## Tokenizer
 

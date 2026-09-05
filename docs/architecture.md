@@ -105,3 +105,15 @@ of them do:
 Tool approval is a `Future` per tool call id, resolved when the browser sends
 `{action: "tool_approval", id, approved}` and cancelled on stop or reset. It
 times out after five minutes and denies by default.
+
+## The PACES Framework
+
+URA-Shree is engineered around five architectural pillars:
+
+| Pillar | Focus | Implementation in URA-Shree |
+| :--- | :--- | :--- |
+| **Performance** | Throughput & Latency | CUDA Graph decoding reaching **348.8 tok/s**, static KV cache, and BF16 mixed precision. |
+| **Architecture** | Modern Transformer Design | RoPE positional encoding, SwiGLU non-linearities, Grouped-Query Attention (GQA), and RMSNorm with zero bias. |
+| **Capability** | Autonomous Agent Action | Safe tool loop with filesystem read/write, persistent shell sessions, Time Machine snapshots, and skills registry. |
+| **Evaluation** | Rigorous Quality Assurance | Automated before/after prompt evaluation, loss and perplexity tracking, and regression benchmarking. |
+| **Security** | Sandboxed Execution | Path boundary validation, user confirmation modals for destructive file edits, and zero-leak credential storage. |
