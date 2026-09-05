@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Markdown } from '../lib/markdown'
 import {
-  IconAlert, IconBolt, IconBrain, IconCheck, IconChevronDown, IconChevronRight, IconClose,
-  IconFolder, IconPaperclip, IconSend, IconStop, IconUraShreeLogo,
+  IconAlert, IconBolt, IconBranch, IconBrain, IconBug, IconCheck, IconChevronRight, IconClose,
+  IconCode, IconCompass, IconCopy, IconFileText, IconFlask, IconFolder, IconImage,
+  IconPaperclip, IconSend, IconShield, IconStop, IconUraShreeLogo,
 } from '../lib/icons'
 import { formatBytes } from '../lib/api'
 import type { Attachment, Block, Turn } from '../types'
@@ -10,6 +11,43 @@ import type { Attachment, Block, Turn } from '../types'
 /** Whether the scroll container is close enough to the bottom to keep pinning. */
 function nearBottom(el: HTMLElement, slack = 120): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight < slack
+}
+
+const CODE_EXT = /\.(py|js|jsx|ts|tsx|rs|go|java|c|h|cpp|hpp|rb|php|swift|kt|sh|ps1|sql|css|html?|json|ya?ml|toml)$/i
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i
+
+function fileIcon(name: string): ReactNode {
+  if (IMAGE_EXT.test(name)) return <IconImage size={11} />
+  if (CODE_EXT.test(name)) return <IconCode size={11} />
+  return <IconFileText size={11} />
+}
+
+/** Copy button that confirms in place rather than firing a toast across the app. */
+function CopyButton({ text, label = 'Copy message' }: { text: string; label?: string }) {
+  const [done, setDone] = useState(false)
+
+  const copy = () => {
+    navigator.clipboard?.writeText(text).then(
+      () => {
+        setDone(true)
+        window.setTimeout(() => setDone(false), 1400)
+      },
+      () => undefined,
+    )
+  }
+
+  return (
+    <button
+      className={`copy-btn${done ? ' done' : ''}`}
+      onClick={copy}
+      title={label}
+      aria-label={label}
+      type="button"
+    >
+      {done ? <IconCheck size={12} /> : <IconCopy size={12} />}
+      <span>{done ? 'Copied' : 'Copy'}</span>
+    </button>
+  )
 }
 
 function ThinkingCard({ text, isStreaming }: { text: string; isStreaming: boolean }) {
@@ -25,7 +63,7 @@ function ThinkingCard({ text, isStreaming }: { text: string; isStreaming: boolea
       <div className="thinking-header" onClick={() => setOpen((prev) => !prev)}>
         <div className="thinking-title">
           <IconBrain size={14} className={`thinking-icon ${isStreaming ? 'pulse' : ''}`} />
-          <span>{isStreaming ? 'Thinking…' : 'Thinking Process'}</span>
+          <span>{isStreaming ? 'Thinking…' : 'Thinking process'}</span>
           {wordCount > 0 && <span className="thinking-badge">{wordCount} words</span>}
         </div>
         <button
@@ -38,7 +76,7 @@ function ThinkingCard({ text, isStreaming }: { text: string; isStreaming: boolea
           title={open ? 'Hide thinking' : 'Open thinking'}
         >
           <span>{open ? 'Hide' : 'Open'}</span>
-          {open ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
+          <IconChevronRight size={13} className={`chevron${open ? ' open' : ''}`} />
         </button>
       </div>
       {open && (
@@ -62,28 +100,28 @@ function ToolCard({ block, onApprove }: { block: Block; onApprove?: (id: string,
 
   const isPendingApproval = tool.status === 'awaiting_approval'
 
-  const icon =
-    isPendingApproval ? <span className="dot dot-warn" />
-      : tool.status === 'running' ? <span className="dot dot-live" />
-        : tool.status === 'ok' ? <IconCheck size={13} style={{ color: 'var(--ok)' }} />
-          : <IconAlert size={13} style={{ color: 'var(--danger)' }} />
+  const statePill =
+    isPendingApproval ? <span className="pill pill-warn"><span className="dot dot-warn" />permission</span>
+      : tool.status === 'running' ? <span className="pill pill-live"><span className="dot dot-live" />running</span>
+        : tool.status === 'ok' ? <span className="pill pill-ok"><IconCheck size={11} />done</span>
+          : <span className="pill pill-danger"><IconAlert size={11} />failed</span>
 
   return (
-    <div className={`tool ${isPendingApproval ? 'tool-approval-needed' : ''}`}>
-      <button className="tool-head" onClick={() => setOpen(!open)}>
-        {open ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
-        {icon}
+    <div className={`tool${isPendingApproval ? ' tool-approval-needed' : ''}${open ? ' open' : ''}`}>
+      <button className="tool-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <IconChevronRight size={13} className={`chevron${open ? ' open' : ''}`} />
         <span className="tool-name">{tool.name}</span>
         {summary && <span className="tool-arg truncate">{summary}</span>}
         <span className="spacer" />
-        {isPendingApproval && <span className="chip chip-warn">permission needed</span>}
-        {tool.mutating && !isPendingApproval && <span className="chip chip-warn">writes</span>}
+        {tool.mutating && !isPendingApproval && <span className="pill pill-warn">writes</span>}
+        {statePill}
       </button>
 
       {isPendingApproval && (
         <div className="tool-approval-card">
           <div className="tool-approval-text">
-            <strong>Permission Request:</strong> Shree wants to save or modify <code>{summary || tool.name}</code>. Allow this action?
+            <strong>Permission request:</strong> Shree wants to save or modify{' '}
+            <code>{summary || tool.name}</code>. Allow this action?
           </div>
           <div className="tool-approval-actions">
             <button
@@ -93,7 +131,7 @@ function ToolCard({ block, onApprove }: { block: Block; onApprove?: (id: string,
                 onApprove?.(tool.id, true)
               }}
             >
-              Approve & Save
+              Approve and save
             </button>
             <button
               className="btn btn-ghost btn-sm danger"
@@ -110,7 +148,11 @@ function ToolCard({ block, onApprove }: { block: Block; onApprove?: (id: string,
 
       {open && (
         <div className="tool-body">
-          <pre>{tool.text || (tool.status === 'running' ? 'running…' : isPendingApproval ? 'Waiting for user permission…' : '(no output)')}</pre>
+          <pre>
+            {tool.text || (tool.status === 'running'
+              ? 'running…'
+              : isPendingApproval ? 'Waiting for user permission…' : '(no output)')}
+          </pre>
         </div>
       )}
     </div>
@@ -120,14 +162,14 @@ function ToolCard({ block, onApprove }: { block: Block; onApprove?: (id: string,
 function TurnView({ turn, onApproveTool }: { turn: Turn; onApproveTool?: (id: string, approved: boolean) => void }) {
   if (turn.role === 'user') {
     return (
-      <div className="turn">
+      <div className="turn turn-right">
         <div className="turn-user">
           {turn.text}
           {!!turn.attachments?.length && (
             <div className="attachments" style={{ padding: '8px 0 0' }}>
               {turn.attachments.map((a) => (
                 <span key={a.name} className="attachment">
-                  <IconPaperclip size={11} />
+                  {fileIcon(a.name)}
                   <span className="truncate">{a.name}</span>
                   <span className="faint">{formatBytes(a.size)}</span>
                 </span>
@@ -135,19 +177,33 @@ function TurnView({ turn, onApproveTool }: { turn: Turn; onApproveTool?: (id: st
             </div>
           )}
         </div>
+        <div className="turn-tools">
+          <CopyButton text={turn.text} />
+        </div>
       </div>
     )
   }
 
+  // Only the prose is worth copying; tool output already has its own block.
+  const plainText = turn.blocks
+    .filter((block) => block.kind === 'text')
+    .map((block) => block.text)
+    .join('\n\n')
+    .trim()
+
   return (
     <div className="turn">
       <div className="turn-meta">
-        <span className="avatar">S</span>
-        <span>Shree</span>
-        {turn.meta?.model && <span className="faint">· {turn.meta.model}</span>}
+        <span className="role-badge">
+          <IconUraShreeLogo size={13} />
+          Shree
+        </span>
+        {turn.meta?.model && <span className="faint mono truncate">{turn.meta.model}</span>}
         {turn.meta?.durationMs != null && (
-          <span className="faint">· {(turn.meta.durationMs / 1000).toFixed(1)}s</span>
+          <span className="faint mono">{(turn.meta.durationMs / 1000).toFixed(1)}s</span>
         )}
+        <span className="spacer" />
+        {!turn.streaming && plainText && <CopyButton text={plainText} />}
       </div>
 
       {turn.blocks.map((block, index) => {
@@ -185,11 +241,43 @@ function TurnView({ turn, onApproveTool }: { turn: Turn; onApproveTool?: (id: st
   )
 }
 
-const SUGGESTIONS = [
-  'Build a modern interactive web dashboard with React and TypeScript',
-  'Create a REST API with FastAPI, data models, and automated tests',
-  'Review the workspace files and suggest architectural improvements',
-  'What changed in the workspace since the last snapshot?',
+/** One-click starters. Short on purpose: intent for the model, not a script. */
+const PRESETS: { id: string; label: string; icon: ReactNode; prompt: string }[] = [
+  {
+    id: 'explain',
+    label: 'Explain codebase and architecture',
+    icon: <IconCompass size={13} />,
+    prompt: 'Map this workspace: the entry points, how the layers fit together, where state lives, '
+      + 'and the three things a new contributor would get wrong first.',
+  },
+  {
+    id: 'tests',
+    label: 'Generate unit tests',
+    icon: <IconFlask size={13} />,
+    prompt: 'Find the code paths with real branching logic and no test coverage, then write unit '
+      + 'tests for them using the test framework this project already uses.',
+  },
+  {
+    id: 'perf',
+    label: 'Find bugs and optimise performance',
+    icon: <IconBug size={13} />,
+    prompt: 'Review the workspace for correctness bugs and performance problems. Rank what you find '
+      + 'by impact, and show the failing input or the hot path for each one.',
+  },
+  {
+    id: 'diff',
+    label: 'Review uncommitted git changes',
+    icon: <IconBranch size={13} />,
+    prompt: 'Run git status and git diff, then review the uncommitted changes: correctness first, '
+      + 'then anything that should be simplified before it lands.',
+  },
+  {
+    id: 'security',
+    label: 'Security and vulnerability audit',
+    icon: <IconShield size={13} />,
+    prompt: 'Audit this workspace for security problems: input validation at trust boundaries, path '
+      + 'traversal, injection, secret handling, and unsafe defaults. Cite file and line.',
+  },
 ]
 
 interface ChatProps {
@@ -205,13 +293,16 @@ interface ChatProps {
   onRemoveAttachment: (name: string) => void
   onApproveTool?: (id: string, approved: boolean) => void
   onOpenSkills?: () => void
+  onOpenPalette?: () => void
 }
 
 export function Chat({
   turns, busy, connected, modelLabel, attachments,
   onSend, onStop, onAttach, onAttachFolder, onRemoveAttachment, onApproveTool, onOpenSkills,
+  onOpenPalette,
 }: ChatProps) {
   const [draft, setDraft] = useState('')
+  const [presetsOpen, setPresetsOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const pinned = useRef(true)
@@ -238,6 +329,12 @@ export function Chat({
     pinned.current = true
   }
 
+  const applyPreset = (text: string) => {
+    setDraft(text)
+    setPresetsOpen(false)
+    inputRef.current?.focus()
+  }
+
   return (
     <div className="chat">
       <div
@@ -247,28 +344,46 @@ export function Chat({
       >
         <div className="chat-inner">
           {turns.length === 0 ? (
-            <div style={{ paddingTop: 56 }}>
-              <div className="row" style={{ gap: 10, marginBottom: 6 }}>
-                <IconUraShreeLogo size={28} />
-                <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600 }}>What are we building?</div>
+            <div className="chat-welcome">
+              <div className="row" style={{ gap: 11, marginBottom: 8 }}>
+                <IconUraShreeLogo size={30} />
+                <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600 }}>
+                  {'What are we building?'.split(' ').map((word, i) => (
+                    <span key={word} className="word" style={{ '--i': i } as CSSProperties}>
+                      <span>{word}</span>
+                      {' '}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <p className="muted" style={{ marginTop: 0, marginBottom: 20 }}>
+              <p className="muted" style={{ marginTop: 0, marginBottom: 18, maxWidth: '58ch' }}>
                 Shree reads and edits files, runs commands in a persistent shell, and snapshots the
                 workspace before every change so anything can be undone.
               </p>
-              <div style={{ display: 'grid', gap: 6 }}>
-                {SUGGESTIONS.map((s) => (
+
+              <div className="section-label" style={{ marginBottom: 8 }}>Quick actions</div>
+              <div className="preset-grid">
+                {PRESETS.map((preset, i) => (
                   <button
-                    key={s}
-                    className="btn"
-                    style={{ justifyContent: 'flex-start', height: 34, fontWeight: 400 }}
-                    onClick={() => { setDraft(s); inputRef.current?.focus() }}
+                    key={preset.id}
+                    className="preset rise-in"
+                    style={{ animationDelay: `${160 + i * 60}ms` }}
+                    onClick={() => applyPreset(preset.prompt)}
                   >
-                    <IconBolt size={13} style={{ color: 'var(--accent)', flex: 'none' }} />
-                    {s}
+                    <span className="preset-icon">{preset.icon}</span>
+                    <span className="truncate">{preset.label}</span>
                   </button>
                 ))}
               </div>
+
+              {onOpenPalette && (
+                <button className="welcome-hint" onClick={onOpenPalette}>
+                  <span>Press</span>
+                  <kbd className="kbd">Ctrl</kbd>
+                  <kbd className="kbd">K</kbd>
+                  <span>for the command palette</span>
+                </button>
+              )}
             </div>
           ) : (
             turns.map((turn) => <TurnView key={turn.id} turn={turn} onApproveTool={onApproveTool} />)
@@ -282,7 +397,7 @@ export function Chat({
             <div className="attachments" style={{ paddingTop: 9 }}>
               {attachments.map((a) => (
                 <span key={a.name} className="attachment">
-                  <IconPaperclip size={11} />
+                  {fileIcon(a.path)}
                   <span className="truncate">{a.path}</span>
                   <span className="faint">{formatBytes(a.size)}</span>
                   <button
@@ -301,7 +416,9 @@ export function Chat({
             ref={inputRef}
             rows={1}
             value={draft}
-            placeholder={connected ? `Ask ${modelLabel === 'shree:latest' ? 'Shree' : modelLabel} to build, explain or fix something…` : 'Reconnecting to backend…'}
+            placeholder={connected
+              ? `Ask ${modelLabel === 'shree:latest' ? 'Shree' : modelLabel} to build, explain or fix something…`
+              : 'Reconnecting to backend…'}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -313,6 +430,29 @@ export function Chat({
 
           <div className="composer-bar">
             <div className="composer-actions">
+              <div className="preset-menu-wrap">
+                <button
+                  className={`composer-chip${presetsOpen ? ' active' : ''}`}
+                  onClick={() => setPresetsOpen((open) => !open)}
+                  title="Prompt presets"
+                  type="button"
+                >
+                  <IconBolt size={13} style={{ color: 'var(--accent)' }} /> <span>Quick actions</span>
+                </button>
+                {presetsOpen && (
+                  <>
+                    <div className="preset-menu-scrim" onClick={() => setPresetsOpen(false)} />
+                    <div className="preset-menu">
+                      {PRESETS.map((preset) => (
+                        <button key={preset.id} onClick={() => applyPreset(preset.prompt)}>
+                          <span className="preset-icon">{preset.icon}</span>
+                          <span className="truncate">{preset.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <button className="composer-chip" onClick={onAttach} title="Attach files" type="button">
                 <IconPaperclip size={13} /> <span>Files</span>
               </button>
@@ -320,14 +460,22 @@ export function Chat({
                 <IconFolder size={13} /> <span>Folder</span>
               </button>
               {onOpenSkills && (
-                <button className="composer-chip" onClick={onOpenSkills} title="Agent Skills & Workflows" type="button">
-                  <IconBolt size={13} style={{ color: 'var(--accent)' }} /> <span>Skills</span>
+                <button className="composer-chip" onClick={onOpenSkills} title="Agent skills and workflows" type="button">
+                  <IconBrain size={13} /> <span>Skills</span>
                 </button>
               )}
             </div>
             <span className="spacer" />
             <span className="composer-hint">
-              {busy ? 'thinking…' : 'Enter ↵ to send'}
+              {busy ? (
+                <span className="row" style={{ gap: 6 }}><span className="dot dot-live" />working…</span>
+              ) : (
+                <>
+                  <kbd className="kbd">↵</kbd> send
+                  <span className="hint-sep">·</span>
+                  <kbd className="kbd">⇧ ↵</kbd> newline
+                </>
+              )}
             </span>
             {busy ? (
               <button className="btn-send btn-send-stop" onClick={onStop} title="Stop generation" aria-label="Stop generation">
