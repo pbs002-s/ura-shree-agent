@@ -1758,3 +1758,51 @@ input:checked + .slider:before {
 
 .pane-side, .pane-dock { border-color: var(--hairline); }
 
+/* ── Keyboard hints ─────────────────────────────────────────────────────── */
+
+.kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1;
+}
+.hint-sep { margin: 0 5px; color: var(--text-3); }
+
+/* ── State pills ────────────────────────────────────────────────────────── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.pill-ok     { background: var(--ok-soft);     border-color: transparent; color: var(--ok); }
+.pill-warn   { background: var(--warn-soft);   border-color: transparent; color: var(--warn); }
+.pill-danger { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+.pill-live   { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+
+/* One chevron that rotates, rather than two glyphs swapping in and out. */
+.chevron {
+  flex: none;
+  transition: transform 200ms var(--ease);
+}
+.chevron.open { transform: rotate(90deg); }
+
