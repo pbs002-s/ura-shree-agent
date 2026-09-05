@@ -138,6 +138,74 @@ export const IconFolder = (p: IconProps) => (
   <Svg {...p}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></Svg>
 )
 
+export const IconCopy = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+  </Svg>
+)
+export const IconDownload = (p: IconProps) => (
+  <Svg {...p}><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4 20h16" /></Svg>
+)
+export const IconExternal = (p: IconProps) => (
+  <Svg {...p}><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" /></Svg>
+)
+export const IconCommand = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3Z" />
+  </Svg>
+)
+export const IconShield = (p: IconProps) => (
+  <Svg {...p}><path d="M12 3l7 3v6c0 4.4-2.9 8.2-7 9-4.1-.8-7-4.6-7-9V6Z" /><path d="m9 12 2 2 4-4" /></Svg>
+)
+export const IconFlask = (p: IconProps) => (
+  <Svg {...p}><path d="M9 3h6M10 3v6.2L4.8 18a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 9.2V3" /><path d="M7.5 15h9" /></Svg>
+)
+export const IconBug = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="8" y="7" width="8" height="13" rx="4" />
+    <path d="M8 11H4M20 11h-4M8 16H4.5M20 16h-3.5M9.5 7 8 4.5M14.5 7 16 4.5" />
+  </Svg>
+)
+export const IconBook = (p: IconProps) => (
+  <Svg {...p}><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2Z" /><path d="M8 7h7M8 11h7" /></Svg>
+)
+export const IconCompass = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5Z" /></Svg>
+)
+export const IconGithub = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9 19c-4.3 1.3-4.3-2.2-6-2.7m12 5.2v-3.4c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 3.4 5.4 3.7 5.4 3.7a4.3 4.3 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 10.1c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21.5" />
+  </Svg>
+)
+export const IconGlobe = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18-2.5-2.6-2.5-15.4 0-18Z" /></Svg>
+)
+export const IconCamera = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.3l1.4-2h7.6l1.4 2h2.3A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5Z" />
+    <circle cx="12" cy="13" r="3.2" />
+  </Svg>
+)
+export const IconPalette = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 3a9 9 0 0 0 0 18c1.4 0 2-1 2-2s-.7-2-.7-2.6c0-.7.5-1.4 1.5-1.4H18a3 3 0 0 0 3-3c0-4.4-4-8-9-8Z" />
+    <circle cx="8" cy="10" r="1" /><circle cx="12" cy="7.5" r="1" /><circle cx="16" cy="10" r="1" />
+  </Svg>
+)
+export const IconLayers = (p: IconProps) => (
+  <Svg {...p}><path d="m12 3 9 5-9 5-9-5Z" /><path d="m4 13 8 4.5 8-4.5" /></Svg>
+)
+export const IconFileText = (p: IconProps) => (
+  <Svg {...p}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></Svg>
+)
+export const IconImage = (p: IconProps) => (
+  <Svg {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m5 17 4.5-4.5L14 17l2.5-2.5L21 18" /></Svg>
+)
+export const IconCode = (p: IconProps) => (
+  <Svg {...p}><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 6l-3 12" /></Svg>
+)
+
 export function IconUraShreeLogo({ size = 26, className = '' }: { size?: number; className?: string }) {
   return (
     <svg
@@ -150,41 +218,31 @@ export function IconUraShreeLogo({ size = 26, className = '' }: { size?: number;
       aria-hidden="true"
     >
       <defs>
-        <linearGradient id="uraGrad1" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#f97316" />
-          <stop offset="0.5" stopColor="#fb923c" />
-          <stop offset="1" stopColor="#ea580c" />
+        {/* The ramp is built from the accent token, so the mark follows the
+            palette the user picked instead of a baked-in orange. */}
+        <linearGradient id="uraShell" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+          <stop stopColor="var(--accent)" />
+          <stop offset="1" stopColor="var(--accent-hover)" />
         </linearGradient>
-        <linearGradient id="uraGrad2" x1="10" y1="10" x2="38" y2="38" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#ffffff" stopOpacity="0.98" />
-          <stop offset="1" stopColor="#ffedd5" stopOpacity="0.9" />
-        </linearGradient>
-        <filter id="uraGlow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#ea580c" floodOpacity="0.4" />
-        </filter>
       </defs>
-      <polygon
-        points="24,3 43,14 43,34 24,45 5,34 5,14"
-        fill="url(#uraGrad1)"
-        filter="url(#uraGlow)"
-      />
+      <polygon points="24,3 43,14 43,34 24,45 5,34 5,14" fill="url(#uraShell)" />
       <polygon
         points="24,7.5 39,16 39,32 24,40.5 9,32 9,16"
         fill="none"
-        stroke="rgba(255,255,255,0.3)"
+        stroke="var(--on-accent)"
+        strokeOpacity="0.28"
         strokeWidth="1.2"
       />
       <path
         d="M31 16.5C29 14.8 26.5 14 23.5 14C18.8 14 16 16.8 16 20.2C16 23.8 19.2 25.2 23 26.2C27.5 27.4 30.5 28.8 30.5 32.8C30.5 37 26.8 39.5 22.2 39.5C18.2 39.5 15.2 37.8 13.5 35"
-        stroke="url(#uraGrad2)"
+        stroke="var(--on-accent)"
         strokeWidth="3.4"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="31" cy="16.5" r="1.8" fill="#ffffff" />
-      <circle cx="13.5" cy="35" r="1.8" fill="#ffffff" />
-      <circle cx="23.2" cy="26.2" r="1.4" fill="#ffffff" />
+      <circle cx="31" cy="16.5" r="1.8" fill="var(--on-accent)" />
+      <circle cx="13.5" cy="35" r="1.8" fill="var(--on-accent)" />
+      <circle cx="23.2" cy="26.2" r="1.4" fill="var(--on-accent)" />
     </svg>
   )
 }
-

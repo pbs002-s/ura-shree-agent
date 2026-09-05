@@ -2,7 +2,7 @@
 
 A modern autonomous AI coding assistant and agent interface powered by a custom Transformer language model built from scratch in this repository, governed by the **PACES** framework, or by any frontier model you provide an API key for.
 
-Created and developed by **[Pritam](https://github.com/pbs002-s)** from **DIU (Daffodil International University)**.
+Created and developed by **[Pritam Biswas](https://github.com/pbs002-s)** from **DIU (Daffodil International University)** — [GitHub](https://github.com/pbs002-s) · [Portfolio](https://pritam-biswas-portfolio.netlify.app/).
 
 The custom Transformer architecture, the byte-level BPE tokenizer, the training pipeline, the agent harness, the sandboxed tools, and the interface are all built here natively. Inspectable end to end, scalable from **11.3M (Small)** up to **78.7M (Medium)** and **283M (Large)** parameters on consumer GPUs.
 
@@ -325,3 +325,15 @@ the full HTTP and WebSocket API.
   permissions where the OS supports it. That is not encryption, and it is not
   presented as such - the key never leaves your machine except to the provider
   it belongs to, and the API returns only a masked preview.
+
+---
+
+## Credit
+
+Built by **Pritam Biswas**, Daffodil International University.
+
+- GitHub: <https://github.com/pbs002-s>
+- Portfolio: <https://pritam-biswas-portfolio.netlify.app/>
+
+The project overview page is served alongside the app at `/landing.html`, and
+the app links back to it from the rail logo and from Settings, About.

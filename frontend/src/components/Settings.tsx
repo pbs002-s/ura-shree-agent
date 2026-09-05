@@ -1,13 +1,24 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { api, formatBytes, formatNumber } from '../lib/api'
 import {
-  IconAlert, IconCheck, IconClose, IconCpu, IconKey, IconRefresh, IconSearch, IconTrash,
+  IconAlert, IconCheck, IconClose, IconCpu, IconExternal, IconGithub, IconGlobe, IconKey,
+  IconRefresh, IconSearch, IconTrash, IconUraShreeLogo,
 } from '../lib/icons'
-import type { AppSettings, ModelInfo, ProviderSpec, Status, Theme } from '../types'
+import type { Accent, AppSettings, ModelInfo, ProviderSpec, Status, Theme } from '../types'
 
 type Section = 'models' | 'behaviour' | 'local' | 'appearance' | 'about'
 
 const NO_MODELS: ModelInfo[] = []
+
+// Swatch colour is the light-theme accent; the dark variant is picked up from
+// the stylesheet once the attribute is set.
+const ACCENTS: { id: Accent; label: string; swatch: string }[] = [
+  { id: 'ember', label: 'Ember', swatch: '#c2551f' },
+  { id: 'crimson', label: 'Crimson', swatch: '#b0233f' },
+  { id: 'indigo', label: 'Indigo', swatch: '#4c56b8' },
+  { id: 'moss', label: 'Moss', swatch: '#4a7a48' },
+  { id: 'slate', label: 'Slate', swatch: '#4a5560' },
+]
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'models', label: 'Models and keys' },
@@ -21,14 +32,17 @@ interface SettingsProps {
   settings: AppSettings
   status: Status | null
   theme: Theme
+  accent: Accent
   onThemeChange: (theme: Theme) => void
+  onAccentChange: (accent: Accent) => void
   onSettingsChange: (settings: AppSettings) => void
   onNotify: (message: string, tone?: 'ok' | 'danger') => void
   onClose: () => void
 }
 
 export function SettingsDialog({
-  settings, status, theme, onThemeChange, onSettingsChange, onNotify, onClose,
+  settings, status, theme, accent, onThemeChange, onAccentChange, onSettingsChange,
+  onNotify, onClose,
 }: SettingsProps) {
   const [section, setSection] = useState<Section>('models')
   const [specs, setSpecs] = useState<ProviderSpec[]>([])
@@ -423,6 +437,24 @@ export function SettingsDialog({
                     ))}
                   </div>
                   <div className="hint">System follows your operating system setting.</div>
+
+                  <label style={{ marginTop: 18 }}>Accent</label>
+                  <div className="swatches">
+                    {ACCENTS.map((option) => (
+                      <button
+                        key={option.id}
+                        className={`swatch${accent === option.id ? ' active' : ''}`}
+                        style={{ '--sw': option.swatch } as CSSProperties}
+                        onClick={() => onAccentChange(option.id)}
+                        title={option.label}
+                        aria-label={`${option.label} accent`}
+                        aria-pressed={accent === option.id}
+                      />
+                    ))}
+                  </div>
+                  <div className="hint">
+                    Only the accent family changes. The neutral ramp stays where it is.
+                  </div>
                 </div>
               )}
 
@@ -463,15 +495,61 @@ export function SettingsDialog({
                     </>
                   )}
 
-                  <div className="section-label" style={{ marginBottom: 6 }}>Credits</div>
-                  <p className="muted" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>
-                    Built by{' '}
-                    <a href="https://github.com/pbs002-s" target="_blank" rel="noreferrer noopener">
-                      github.com/pbs002-s
-                    </a>
-                    . The model, tokenizer, training loop, agent and interface are all in this
+                  <div className="section-label" style={{ marginBottom: 8 }}>Project</div>
+                  <a
+                    className="overview-card"
+                    href="/landing.html"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    <span className="overview-mark"><IconUraShreeLogo size={30} /></span>
+                    <span className="overview-text">
+                      <strong>Project overview and architecture</strong>
+                      <span className="muted">
+                        The PACES pillars, the model configurations, what each part of the stack
+                        does, and the quick start. Opens in a new tab.
+                      </span>
+                      <span className="overview-tags">
+                        <span className="pill">78.7M parameters</span>
+                        <span className="pill">348.8 tok/s</span>
+                        <span className="pill">2,048 context</span>
+                      </span>
+                    </span>
+                    <IconExternal size={15} className="overview-go" />
+                  </a>
+
+                  <div className="section-label" style={{ margin: '18px 0 8px' }}>Credits</div>
+                  <p className="muted" style={{ margin: '0 0 10px', fontSize: 'var(--fs-sm)' }}>
+                    Built by <strong>Pritam Biswas</strong> at Daffodil International University.
+                    The model, tokenizer, training loop, agent and interface are all in this
                     repository.
                   </p>
+                  <div className="credit-links">
+                    <a
+                      className="credit-link"
+                      href="https://github.com/pbs002-s"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      <IconGithub size={14} />
+                      <span>
+                        <strong>GitHub</strong>
+                        <span className="faint mono">github.com/pbs002-s</span>
+                      </span>
+                    </a>
+                    <a
+                      className="credit-link"
+                      href="https://pritam-biswas-portfolio.netlify.app/"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      <IconGlobe size={14} />
+                      <span>
+                        <strong>Portfolio</strong>
+                        <span className="faint mono">pritam-biswas-portfolio.netlify.app</span>
+                      </span>
+                    </a>
+                  </div>
                 </>
               )}
             </div>

@@ -1,0 +1,2081 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light dark" />
+<title>URA-Shree — a coding agent and the model under it</title>
+<meta name="description" content="An autonomous coding agent built on a Transformer language model written from scratch: 78.7M parameters, 348.8 tok/s decode, tools, approval, and a time machine." />
+<script>
+  // Theme and accent are read before first paint so a reload never flashes.
+  (function () {
+    try {
+      var t = localStorage.getItem('shree.theme') || 'system';
+      var dark = t === 'dark' || (t === 'system' &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      document.documentElement.dataset.accent =
+        localStorage.getItem('shree.accent') || 'ember';
+    } catch (e) {
+      document.documentElement.dataset.theme = 'dark';
+      document.documentElement.dataset.accent = 'ember';
+    }
+  })();
+</script>
+<style>
+:root {
+  --bg:          #f7f6f3;
+  --bg-sunk:     #efede8;
+  --surface:     #ffffff;
+  --surface-2:   #faf9f7;
+  --surface-3:   #f1efeb;
+  --line:        #e0ddd6;
+  --line-strong: #c9c5bb;
+  --text:        #1c1b19;
+  --text-2:      #55524c;
+  --text-3:      #86827a;
+  --on-accent:   #fffaf6;
+
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+             "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
+               Menlo, Consolas, monospace;
+
+  --maxw: 1180px;
+  --gutter: clamp(20px, 5vw, 64px);
+  --pad: clamp(72px, 10vw, 148px);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-theme='dark'] {
+  --bg:          #131417;
+  --bg-sunk:     #0d0e10;
+  --surface:     #191b1f;
+  --surface-2:   #1e2126;
+  --surface-3:   #24272d;
+  --line:        #2b2f36;
+  --line-strong: #3a3f48;
+  --text:        #e8e6e1;
+  --text-2:      #a5a49f;
+  --text-3:      #74736f;
+  --on-accent:   #16120e;
+}
+
+/* Accent variants. Light values first, dark overrides below. */
+:root[data-accent='ember']   { --accent: #c2551f; --accent-hover: #a84718; --accent-soft: #fbeee6; --accent-line: #f0cdb6; }
+:root[data-accent='crimson'] { --accent: #b0233f; --accent-hover: #971630; --accent-soft: #fbe9ed; --accent-line: #f0c4ce; }
+:root[data-accent='indigo']  { --accent: #4c56b8; --accent-hover: #3f479f; --accent-soft: #ecedfa; --accent-line: #cbcff0; }
+:root[data-accent='moss']    { --accent: #4a7a48; --accent-hover: #3c6539; --accent-soft: #ecf3ec; --accent-line: #c9dfc7; }
+:root[data-accent='slate']   { --accent: #4a5560; --accent-hover: #39424b; --accent-soft: #eef0f2; --accent-line: #ccd3d9; }
+
+:root[data-theme='dark'][data-accent='ember']   { --accent: #e0713a; --accent-hover: #ef8149; --accent-soft: #2a1d15; --accent-line: #4a2f1e; }
+:root[data-theme='dark'][data-accent='crimson'] { --accent: #e26074; --accent-hover: #ee7386; --accent-soft: #2c1519; --accent-line: #4a2029; }
+:root[data-theme='dark'][data-accent='indigo']  { --accent: #8b93ec; --accent-hover: #9ba2f2; --accent-soft: #1b1c2e; --accent-line: #2f3252; }
+:root[data-theme='dark'][data-accent='moss']    { --accent: #74b877; --accent-hover: #86c689; --accent-soft: #16241a; --accent-line: #274a2b; }
+:root[data-theme='dark'][data-accent='slate']   { --accent: #9aa7b4; --accent-hover: #adb8c3; --accent-soft: #1b1f24; --accent-line: #333c45; }
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient: two very slow radial washes. Fixed layer, never on a scroller. */
+.ambient {
+  position: fixed;
+  inset: -20vh -10vw;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.15;
+  background:
+    radial-gradient(42vw 42vw at 18% 12%, var(--accent-soft), transparent 62%),
+    radial-gradient(38vw 38vw at 84% 68%, rgba(255, 255, 255, 0.03), transparent 60%);
+  animation: drift 34s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(3%, 2%, 0) scale(1.08); }
+}
+
+/* Rising Lines Background (React Bits Pro aesthetic) */
+.rising-lines-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease;
+  opacity: 1;
+}
+
+/* Ascii Waves Canvas (React Bits Pro aesthetic) */
+.ascii-waves-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 350ms ease;
+  opacity: 1;
+}
+
+a { color: inherit; text-decoration: none; }
+code { font-family: var(--font-mono); font-size: 0.92em; }
+
+.wrap {
+  position: relative;
+  z-index: 1;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+/* Nav */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+.nav-in {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.5vw, 16px);
+  height: 58px;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.brand svg { color: var(--accent); flex-shrink: 0; }
+.nav-links {
+  display: flex;
+  gap: clamp(10px, 1.8vw, 20px);
+  margin-left: 6px;
+  font-size: 13.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.nav-links a {
+  white-space: nowrap;
+  transition: color 160ms var(--ease);
+}
+.nav-links a:hover { color: var(--text); }
+.spacer { flex: 1; min-width: 6px; }
+
+.engine {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-2);
+  white-space: nowrap;
+  max-width: min(580px, 48vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  text-decoration: none;
+  transition: border-color 160ms var(--ease), background 160ms var(--ease), color 160ms var(--ease);
+}
+.engine:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+  background: var(--surface-2);
+}
+.engine-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #a09d96;
+  flex-shrink: 0;
+}
+.engine.online .engine-dot {
+  background: #2ea043;
+  box-shadow: 0 0 6px #2ea043aa;
+}
+.engine.offline .engine-dot {
+  background: #d73a49;
+}
+
+.swatches { display: flex; gap: 7px; align-items: center; flex-shrink: 0; }
+.swatch {
+  width: 16px; height: 16px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--sw);
+  cursor: pointer;
+  transition: transform 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+.swatch:hover { transform: translateY(-2px); }
+.swatch[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--sw); }
+
+.icon-btn {
+  display: grid; place-items: center;
+  width: 32px; height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 160ms var(--ease), border-color 160ms var(--ease),
+              color 160ms var(--ease);
+}
+.icon-btn:hover { border-color: var(--line-strong); color: var(--text); }
+.icon-btn:active { transform: scale(0.94); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 17px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px; font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 160ms var(--ease), background 160ms var(--ease),
+              border-color 160ms var(--ease);
+}
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.btn-ghost { background: transparent; border-color: var(--line); color: var(--text); }
+.btn-ghost:hover { background: var(--surface-3); border-color: var(--line-strong); transform: translateY(-1px); }
+.btn:active { transform: scale(0.98); }
+.btn-sm {
+  padding: 0 14px;
+  height: 32px;
+  font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Hero */
+
+.hero { padding: clamp(56px, 8vw, 112px) 0 var(--pad); }
+
+.hero-split {
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: clamp(32px, 4.5vw, 64px);
+  align-items: center;
+}
+
+.hero-content {
+  min-width: 0;
+}
+
+.hero-reel {
+  min-width: 0;
+}
+
+/* Motion Reel Frame */
+.reel-frame {
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 20px 48px -14px rgba(0,0,0,0.18), 0 0 0 1px var(--line);
+  overflow: hidden;
+  transition: transform 240ms var(--ease), box-shadow 240ms var(--ease), border-color 240ms var(--ease);
+}
+.reel-frame:hover {
+  transform: translateY(-3px);
+  border-color: var(--line-strong);
+  box-shadow: 0 28px 56px -14px rgba(0,0,0,0.26), 0 0 0 1px var(--line-strong);
+}
+.reel-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  user-select: none;
+}
+.reel-lights {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.reel-light {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.reel-light.close { background: #ff5f56; }
+.reel-light.min   { background: #ffbd2e; }
+.reel-light.max   { background: #27c93f; }
+.reel-title {
+  margin-left: 4px;
+  color: var(--text-2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.reel-scene-nav {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.reel-tab {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: all 140ms ease;
+  white-space: nowrap;
+}
+.reel-tab:hover { color: var(--text); background: var(--surface-3); }
+.reel-tab.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.reel-canvas-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 11.2;
+  min-height: 320px;
+  background: var(--bg-sunk);
+}
+.reel-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@media (max-width: 1020px) {
+  .hero-split {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  margin-bottom: 26px;
+}
+.eyebrow b { color: var(--accent); font-weight: 500; }
+
+h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 6.2vw, 4.6rem);
+  line-height: 1.0;
+  letter-spacing: -0.038em;
+  font-weight: 600;
+  max-width: 15ch;
+  text-shadow: 0 0 32px var(--bg), 0 0 16px var(--bg);
+}
+h1 em { font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
+
+/* Word-by-word entry: each word gets its own clipped window. */
+.word { display: inline-block; overflow: hidden; vertical-align: bottom; }
+.word > span {
+  display: inline-block;
+  transform: translateY(105%);
+  animation: word-up 700ms var(--ease) forwards;
+  animation-delay: calc(var(--i) * 55ms);
+}
+@keyframes word-up { to { transform: translateY(0); } }
+
+.lead {
+  margin: 26px 0 0;
+  max-width: 58ch;
+  font-size: clamp(1.02rem, 1.2vw, 1.16rem);
+  color: var(--text-2);
+  text-shadow: 0 0 22px var(--bg);
+}
+
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 34px; }
+
+.hero-note {
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-3);
+}
+kbd {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-3);
+}
+
+.save-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: all 160ms var(--ease);
+  user-select: none;
+}
+.save-status-badge:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+  background: var(--surface-3);
+  transform: translateY(-1px);
+}
+.save-status-badge svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.save-status-badge .badge-reset {
+  color: var(--text-3);
+  margin-left: 3px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.save-status-badge:hover .badge-reset {
+  color: var(--accent);
+}
+
+/* Stat strip */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  margin-top: clamp(48px, 7vw, 84px);
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.stat { background: var(--surface); padding: 22px 24px; }
+.stat b {
+  display: block;
+  font-size: clamp(1.4rem, 2.4vw, 1.9rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.stat span {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-3);
+}
+
+/* Sections */
+
+section { padding: var(--pad) 0; border-top: 1px solid var(--line); }
+section.hero { border-top: 0; }
+
+.section-head { max-width: 62ch; margin-bottom: clamp(34px, 4vw, 56px); }
+h2 {
+  margin: 0;
+  font-size: clamp(1.6rem, 3.4vw, 2.6rem);
+  line-height: 1.14;
+  letter-spacing: -0.032em;
+  font-weight: 600;
+  text-shadow: 0 0 24px var(--bg);
+}
+h2 em { font-family: var(--font-serif); font-style: italic; font-weight: 400; }
+.section-head p { margin: 14px 0 0; color: var(--text-2); max-width: 58ch; }
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  margin-bottom: 14px;
+}
+
+/* PACES: hairline rows, no boxes. */
+.paces { border-top: 1px solid var(--line); }
+.paces-row {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: clamp(16px, 4vw, 48px);
+  align-items: baseline;
+  padding: 24px 4px;
+  border-bottom: 1px solid var(--line);
+  transition: background 200ms var(--ease);
+}
+.paces-row:hover { background: var(--surface-2); }
+.paces-key {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--accent);
+}
+.paces-row h3 { margin: 0 0 4px; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; }
+.paces-row p { margin: 0; color: var(--text-2); font-size: 14.5px; max-width: 62ch; }
+
+/* Bento: deliberately uneven. */
+.bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+.card {
+  position: relative;
+  grid-column: span 2;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: clamp(20px, 2.4vw, 30px);
+  transition: transform 200ms var(--ease), border-color 200ms var(--ease);
+}
+/* Shadow lives in ::after and cross-fades, so hover never repaints layout. */
+.card::after {
+  content: '';
+  position: absolute; inset: -1px;
+  border-radius: 11px;
+  box-shadow: 0 14px 34px -20px rgba(28, 27, 25, 0.34);
+  opacity: 0;
+  transition: opacity 200ms var(--ease);
+  pointer-events: none;
+}
+.card:hover { transform: translateY(-3px); border-color: var(--line-strong); }
+.card:hover::after { opacity: 1; }
+.card.wide { grid-column: span 4; }
+.card.half { grid-column: span 3; }
+.card h3 { margin: 14px 0 6px; font-size: 1.02rem; font-weight: 600; letter-spacing: -0.02em; }
+.card p { margin: 0; color: var(--text-2); font-size: 14px; }
+
+.tag {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+/* Faux window chrome around the code block. */
+.window {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.chrome {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.chrome i { width: 9px; height: 9px; border-radius: 999px; background: var(--line-strong); }
+.chrome span {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+pre {
+  margin: 0;
+  padding: 20px 22px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.8px;
+  line-height: 1.75;
+  color: var(--text-2);
+}
+pre b { color: var(--text); font-weight: 500; }
+pre i { color: var(--text-3); font-style: normal; }
+
+.split { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: clamp(28px, 5vw, 64px); align-items: start; }
+
+.quote {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(1.3rem, 2.6vw, 1.85rem);
+  line-height: 1.32;
+  letter-spacing: -0.02em;
+  max-width: 24ch;
+  margin: 0;
+}
+.quote-by { margin-top: 18px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); }
+
+.foot {
+  border-top: 1px solid var(--line);
+  padding: 30px 0 46px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.foot a:hover { color: var(--text); }
+
+/* Engine badge */
+
+.engine {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+  transition: border-color 160ms var(--ease), color 160ms var(--ease);
+}
+.engine:hover { border-color: var(--line-strong); color: var(--text); }
+.engine-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--text-3);
+  flex: none;
+}
+.engine.online .engine-dot { background: #2f9e6b; animation: engine-pulse 2s ease-in-out infinite; }
+.engine.offline .engine-dot { background: var(--text-3); }
+@keyframes engine-pulse { 50% { opacity: 0.35; } }
+
+.hero-note-sep { margin: 0 8px; opacity: 0.5; }
+
+/* Credit cards */
+
+.credit-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.credit-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  transition: transform 200ms var(--ease), border-color 200ms var(--ease);
+}
+.credit-card:hover { transform: translateY(-3px); border-color: var(--line-strong); }
+.credit-card svg { color: var(--accent); flex: none; }
+.credit-card h3 { margin: 0 0 2px; font-size: 1rem; font-weight: 600; letter-spacing: -0.02em; }
+.credit-card .mono-line {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.credit-go { margin-left: auto; color: var(--text-3); transition: transform 200ms var(--ease); }
+.credit-card:hover .credit-go { transform: translateX(3px); color: var(--accent); }
+
+/* Scroll reveal */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 620ms var(--ease), transform 620ms var(--ease);
+  transition-delay: calc(var(--d, 0) * 80ms);
+  will-change: transform, opacity;
+}
+.reveal.in { opacity: 1; transform: none; }
+
+@media (max-width: 1100px) {
+  .engine { max-width: 210px; }
+}
+@media (max-width: 960px) {
+  .engine { display: none; }
+}
+@media (max-width: 820px) {
+  .nav-links { display: none; }
+}
+@media (max-width: 900px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .bento { grid-template-columns: repeat(2, 1fr); }
+  .card, .card.wide, .card.half { grid-column: span 2; }
+  .split { grid-template-columns: 1fr; }
+  .credit-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .stats { grid-template-columns: 1fr; }
+  .bento { grid-template-columns: 1fr; }
+  .card, .card.wide, .card.half { grid-column: span 1; }
+  .paces-row { grid-template-columns: 44px 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .ambient { animation: none; }
+  .word > span { transform: none; animation: none; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="ambient"></div>
+<canvas id="rising-lines-canvas" class="rising-lines-canvas" aria-hidden="true"></canvas>
+<canvas id="ascii-waves-canvas" class="ascii-waves-canvas" aria-hidden="true"></canvas>
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="#top">
+      <svg width="24" height="24" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="uraShell" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+            <stop stop-color="var(--accent)" />
+            <stop offset="1" stop-color="var(--accent-hover)" />
+          </linearGradient>
+        </defs>
+        <polygon points="24,3 43,14 43,34 24,45 5,34 5,14" fill="url(#uraShell)" />
+        <polygon points="24,7.5 39,16 39,32 24,40.5 9,32 9,16" fill="none"
+                 stroke="var(--on-accent)" stroke-opacity="0.28" stroke-width="1.2" />
+        <path d="M31 16.5C29 14.8 26.5 14 23.5 14C18.8 14 16 16.8 16 20.2C16 23.8 19.2 25.2 23 26.2C27.5 27.4 30.5 28.8 30.5 32.8C30.5 37 26.8 39.5 22.2 39.5C18.2 39.5 15.2 37.8 13.5 35"
+              stroke="var(--on-accent)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="31" cy="16.5" r="1.8" fill="var(--on-accent)" />
+        <circle cx="13.5" cy="35" r="1.8" fill="var(--on-accent)" />
+        <circle cx="23.2" cy="26.2" r="1.4" fill="var(--on-accent)" />
+      </svg>
+      URA-Shree
+    </a>
+    <nav class="nav-links">
+      <a href="#paces">PACES</a>
+      <a href="#build">What is here</a>
+      <a href="#start">Quick start</a>
+    </nav>
+    <span class="spacer"></span>
+    <a class="engine" id="engine" href="/" onclick="openApp(event)" title="Backend status">
+      <span class="engine-dot" id="engine-dot"></span>
+      <span id="engine-text">Checking engine…</span>
+    </a>
+    <div class="swatches" role="group" aria-label="Accent colour">
+      <button class="swatch" data-accent="ember"   style="--sw:#c2551f" title="Ember"   aria-label="Ember accent"></button>
+      <button class="swatch" data-accent="crimson" style="--sw:#b0233f" title="Crimson" aria-label="Crimson accent"></button>
+      <button class="swatch" data-accent="indigo"  style="--sw:#4c56b8" title="Indigo"  aria-label="Indigo accent"></button>
+      <button class="swatch" data-accent="moss"    style="--sw:#4a7a48" title="Moss"    aria-label="Moss accent"></button>
+      <button class="swatch" data-accent="slate"   style="--sw:#4a5560" title="Slate"   aria-label="Slate accent"></button>
+    </div>
+    <button class="icon-btn" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+      </svg>
+    </button>
+    <a class="btn btn-primary btn-sm" href="/" onclick="openApp(event)">Open the app</a>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap">
+    <section class="hero">
+      <div class="hero-split">
+        <div class="hero-content">
+          <div class="eyebrow">Built at DIU by Pritam &middot; <b>PACES</b> framework</div>
+          <h1 id="headline">A coding agent, and the <em>model</em> underneath it.</h1>
+          <p class="lead reveal">
+            A decoder-only Transformer written from scratch in this repository &mdash; tokenizer,
+            training loop, agent harness, tools and interface included. Run the local checkpoint,
+            or point the same agent at any frontier model you hold a key for.
+          </p>
+          <div class="hero-actions reveal" style="--d:1">
+            <a class="btn btn-primary" href="/" onclick="openApp(event)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+              </svg>
+              Launch workspace
+            </a>
+            <a class="btn btn-ghost" href="/#settings" onclick="openApp(event)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="8" cy="14" r="4" /><path d="m11 11 8-8 2 2-2 2 2 2-2 2-2-2-2 2" />
+              </svg>
+              Configure API keys
+            </a>
+            <a class="btn btn-ghost" href="/?dock=terminal" onclick="openApp(event)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" /><path d="m7 9 3 3-3 3M13 15h4" />
+              </svg>
+              Open terminal
+            </a>
+          </div>
+          <div class="hero-note reveal" style="--d:2">
+            python scripts/launch.py, then <kbd>127.0.0.1:8000</kbd>
+            <span class="hero-note-sep">·</span>
+            <kbd>Ctrl</kbd><kbd>K</kbd> for command palette
+            <span class="hero-note-sep">·</span>
+            <span id="save-status-badge" class="save-status-badge" onclick="toggleSavedLaunch(event)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span><b>First visit</b>: click "Open the app" to enter workspace and save default</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="hero-reel reveal" style="--d:1">
+          <div class="reel-frame">
+            <div class="reel-bar">
+              <div class="reel-lights">
+                <span class="reel-light close"></span>
+                <span class="reel-light min"></span>
+                <span class="reel-light max"></span>
+              </div>
+              <span class="reel-title">ura-shree · PACES live reel</span>
+              <div class="reel-scene-nav" id="reel-tabs">
+                <button class="reel-tab active" data-scene="0">Agent</button>
+                <button class="reel-tab" data-scene="1">Model</button>
+                <button class="reel-tab" data-scene="2">Timeline</button>
+                <button class="reel-tab" data-scene="3">Hardware</button>
+              </div>
+            </div>
+            <div class="reel-canvas-wrap">
+              <canvas id="hero-reel-canvas"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stats reveal" style="--d:3">
+        <div class="stat"><b>78.7M</b><span>parameters, medium</span></div>
+        <div class="stat"><b>348.8</b><span>tok/s decode</span></div>
+        <div class="stat"><b>2,048</b><span>context window</span></div>
+        <div class="stat"><b>4,096</b><span>BPE vocabulary</span></div>
+      </div>
+    </section>
+
+    <section id="paces">
+      <div class="section-head reveal">
+        <div class="label">The framework</div>
+        <h2>Five pillars, and nothing <em>decorative</em> between them.</h2>
+        <p>Every part of the system answers to one of these. A feature that serves none of
+           them is not in the repository.</p>
+      </div>
+
+      <div class="paces">
+        <div class="paces-row reveal">
+          <div class="paces-key">P</div>
+          <div>
+            <h3>Performance</h3>
+            <p>348.8 tok/s decode with CUDA graphs, a static KV cache, and BF16 mixed precision.</p>
+          </div>
+        </div>
+        <div class="paces-row reveal" style="--d:1">
+          <div class="paces-key">A</div>
+          <div>
+            <h3>Architecture</h3>
+            <p>Decoder-only Transformer with rotary position embeddings, SwiGLU activations
+               and grouped-query attention.</p>
+          </div>
+        </div>
+        <div class="paces-row reveal" style="--d:2">
+          <div class="paces-key">C</div>
+          <div>
+            <h3>Capability</h3>
+            <p>A real tool loop: read, edit, search, run commands, index symbols, and roll the
+               whole workspace back through Time Machine snapshots.</p>
+          </div>
+        </div>
+        <div class="paces-row reveal" style="--d:3">
+          <div class="paces-key">E</div>
+          <div>
+            <h3>Evaluation</h3>
+            <p>Tracked validation runs: 80.2% loss reduction and 99.8% perplexity reduction,
+               with before and after generation benchmarks.</p>
+          </div>
+        </div>
+        <div class="paces-row reveal" style="--d:4">
+          <div class="paces-key">S</div>
+          <div>
+            <h3>Security</h3>
+            <p>Strict path boundaries, an approval prompt on every file mutation, and keys kept
+               off the API response surface.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="build">
+      <div class="section-head reveal">
+        <div class="label">What is here</div>
+        <h2>The whole stack is <em>inspectable</em>.</h2>
+      </div>
+
+      <div class="bento">
+        <div class="card wide reveal">
+          <span class="tag">local model</span>
+          <h3>A Transformer you can read end to end</h3>
+          <p>11.3M, 78.7M and 283M parameter configurations, all trainable on a consumer GPU.
+             The byte-level BPE tokenizer was trained on this repository's own source and is
+             lossless at 4,096 tokens.</p>
+        </div>
+        <div class="card reveal" style="--d:1">
+          <span class="tag">providers</span>
+          <h3>Bring your own backend</h3>
+          <p>Anthropic, OpenAI, Google, Groq, DeepSeek, Mistral, xAI, Ollama and any
+             OpenAI-compatible endpoint.</p>
+        </div>
+        <div class="card reveal" style="--d:2">
+          <span class="tag">approval</span>
+          <h3>Every write is a decision</h3>
+          <p>Mutating calls stop and show the path they are about to touch before they run.</p>
+        </div>
+        <div class="card half reveal" style="--d:3">
+          <span class="tag">time machine</span>
+          <h3>Content-addressed snapshots</h3>
+          <p>The workspace is snapshotted as the agent works, with branch, diff and restore.
+             A bad turn costs you nothing.</p>
+        </div>
+        <div class="card reveal" style="--d:4">
+          <span class="tag">terminal</span>
+          <h3>A shell that remembers</h3>
+          <p><code>cd</code>, environment variables and activated virtualenvs survive between
+             commands.</p>
+        </div>
+        <div class="card reveal" style="--d:5">
+          <span class="tag">skills</span>
+          <h3>Standing directives</h3>
+          <p>Named blocks that shape how the agent works, toggled at will.</p>
+        </div>
+        <div class="card wide reveal" style="--d:6">
+          <span class="tag">distillation</span>
+          <h3>Train the local checkpoint with no hosted API in the loop</h3>
+          <p>A local Ollama teacher generates the training data for the from-scratch model,
+             so the pipeline runs entirely on your own machine.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="start">
+      <div class="split">
+        <div class="reveal">
+          <div class="label">Quick start</div>
+          <h2>A few commands to a running <em>workspace</em>.</h2>
+          <p style="color:var(--text-2); max-width:44ch;">
+            The launcher builds the interface and serves the API from one process. Point it at
+            any folder with <code>--workspace</code>, or pick one from the files panel later
+            without restarting.
+          </p>
+          <div class="hero-actions" style="margin-top:18px;">
+            <a class="btn btn-primary" href="/">Launch workspace</a>
+            <a class="btn btn-ghost" href="/#settings">Configure API keys</a>
+            <a class="btn btn-ghost" href="/?dock=terminal">Open terminal</a>
+          </div>
+        </div>
+
+        <div class="window reveal" style="--d:1">
+          <div class="chrome"><i></i><i></i><i></i><span>powershell</span></div>
+<pre><i># the environment</i>
+<b>python</b> -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+<i># torch first, matched to your hardware</i>
+<b>pip</b> install torch --index-url https://download.pytorch.org/whl/cu126
+<b>pip</b> install -r requirements.txt
+
+<i># build the interface and serve on 127.0.0.1:8000</i>
+<b>python</b> scripts/launch.py --workspace ../my-project</pre>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="split">
+        <blockquote class="quote reveal">
+          The model, the tokenizer and the agent were all written here. Nothing is a wrapper.
+          <div class="quote-by">Pritam &middot; Daffodil International University</div>
+        </blockquote>
+        <div class="reveal" style="--d:1">
+          <div class="label">Documentation</div>
+          <div class="bento" style="grid-template-columns:repeat(2,1fr);">
+            <div class="card" style="grid-column:span 1;">
+              <h3 style="margin-top:0;">Architecture</h3>
+              <p>The four layers, the provider seam, where state lives. <code>docs/architecture.md</code></p>
+            </div>
+            <div class="card" style="grid-column:span 1;">
+              <h3 style="margin-top:0;">The agent</h3>
+              <p>The loop, the tools, approval, the system prompt. <code>docs/agent.md</code></p>
+            </div>
+            <div class="card" style="grid-column:span 1;">
+              <h3 style="margin-top:0;">Model</h3>
+              <p>Architecture, tokenizer, the fast decode path, benchmarks. <code>docs/model.md</code></p>
+            </div>
+            <div class="card" style="grid-column:span 1;">
+              <h3 style="margin-top:0;">Training</h3>
+              <p>Training from scratch and the distillation pipeline. <code>docs/training.md</code></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section id="credit">
+      <div class="section-head reveal">
+        <div class="label">Credit</div>
+        <h2>Written by <em>Pritam Biswas</em>.</h2>
+        <p>Daffodil International University. The model, the tokenizer, the training loop, the
+           agent harness and this interface are all his own work in this repository.</p>
+      </div>
+      <div class="credit-grid">
+        <a class="credit-card reveal" href="https://github.com/pbs002-s" target="_blank" rel="noreferrer noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 19c-4.3 1.3-4.3-2.2-6-2.7m12 5.2v-3.4c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 3.4 5.4 3.7 5.4 3.7a4.3 4.3 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 10.1c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21.5" />
+          </svg>
+          <div>
+            <h3>GitHub</h3>
+            <p class="mono-line">github.com/pbs002-s</p>
+          </div>
+          <span class="credit-go">&rarr;</span>
+        </a>
+        <a class="credit-card reveal" style="--d:1" href="https://pritam-biswas-portfolio.netlify.app/" target="_blank" rel="noreferrer noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18-2.5-2.6-2.5-15.4 0-18Z" />
+          </svg>
+          <div>
+            <h3>Portfolio</h3>
+            <p class="mono-line">pritam-biswas-portfolio.netlify.app</p>
+          </div>
+          <span class="credit-go">&rarr;</span>
+        </a>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <span>URA-Shree, built by
+        <a href="https://github.com/pbs002-s" target="_blank" rel="noreferrer noopener">Pritam Biswas</a>
+        at DIU</span>
+      <span class="spacer"></span>
+      <a href="https://pritam-biswas-portfolio.netlify.app/" target="_blank" rel="noreferrer noopener">Portfolio</a>
+      <a href="/" onclick="openApp(event)">Launch workspace</a>
+      <a href="#top">Back to top</a>
+    </footer>
+  </div>
+</main>
+
+<script>
+  // Onboarding & launch state
+  function openApp(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    try {
+      localStorage.setItem('shree.saved', 'true');
+    } catch (err) {}
+    var target = (e && e.currentTarget && e.currentTarget.getAttribute('href')) || '/';
+    if (target.indexOf('app=1') === -1) {
+      if (target.indexOf('#') !== -1) {
+        var parts = target.split('#');
+        target = parts[0] + (parts[0].indexOf('?') !== -1 ? '&app=1' : '?app=1') + '#' + parts[1];
+      } else {
+        target = target + (target.indexOf('?') !== -1 ? '&app=1' : '?app=1');
+      }
+    }
+    window.location.href = target;
+  }
+
+  var checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+  var boltSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+
+  function updateSaveBadge() {
+    var badge = document.getElementById('save-status-badge');
+    if (!badge) return;
+    var isSaved = localStorage.getItem('shree.saved') === 'true';
+    if (isSaved) {
+      badge.innerHTML = checkSvg + '<span><b>Saved</b>: opens workspace directly on start</span> <span class="badge-reset">(click to reset)</span>';
+      badge.title = 'Saved! Clicking this resets preference to show landing page on launch';
+    } else {
+      badge.innerHTML = boltSvg + '<span><b>First visit</b>: click "Open the app" to enter workspace and save default</span>';
+      badge.title = 'First time visit. Enter workspace to save preference.';
+    }
+  }
+
+  function toggleSavedLaunch(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    var isSaved = localStorage.getItem('shree.saved') === 'true';
+    if (isSaved) {
+      localStorage.removeItem('shree.saved');
+    } else {
+      localStorage.setItem('shree.saved', 'true');
+    }
+    updateSaveBadge();
+  }
+
+  updateSaveBadge();
+
+  // Headline: wrap each word so it can slide up out of its own clipped box.
+  (function () {
+    var h = document.getElementById('headline');
+    var i = 0;
+    h.innerHTML = h.innerHTML.replace(/<em>[\s\S]*?<\/em>|[^\s<]+/g, function (w) {
+      return '<span class="word" style="--i:' + (i++) + '"><span>' + w + '</span></span>';
+    });
+  })();
+
+  // Scroll reveal. One observer, unobserved after the first entry.
+  (function () {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.05 });
+    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+  })();
+
+  // Live backend probe. One request, no polling: the page is a document, and a
+  // stale badge is better than a request every few seconds on an idle tab.
+  (function () {
+    var badge = document.getElementById('engine');
+    var text = document.getElementById('engine-text');
+
+    fetch('/api/status', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error(String(r.status))); })
+      .then(function (status) {
+        var device = (status.runtime && (status.runtime.device_name || status.runtime.device)) || '';
+        device = device.replace(/NVIDIA GeForce /, '');
+        var mode = status.hardware && status.hardware.cuda_available ? 'CUDA' : 'CPU';
+        var provider = status.active && status.active.provider;
+        var parts = [];
+        if (device) parts.push(device);
+        parts.push(mode);
+        if (provider && provider !== 'local') {
+          var modelName = provider.indexOf('/') !== -1 ? provider.split('/')[1] : provider;
+          parts.push(modelName);
+        }
+        badge.classList.add('online');
+        badge.title = 'Backend reachable. Click to open the workspace. (' + (provider || 'local') + ')';
+        text.textContent = 'Engine online · ' + parts.join(' • ');
+      })
+      .catch(function () {
+        badge.classList.add('offline');
+        badge.title = 'No backend on this origin. Run python scripts/launch.py';
+        text.textContent = 'Engine offline';
+      });
+  })();
+
+  // Accent and theme, sharing the app's localStorage keys.
+  (function () {
+    var root = document.documentElement;
+    function paint() {
+      document.querySelectorAll('.swatch').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.accent === root.dataset.accent));
+      });
+    }
+    document.querySelectorAll('.swatch').forEach(function (b) {
+      b.addEventListener('click', function () {
+        root.dataset.accent = b.dataset.accent;
+        try { localStorage.setItem('shree.accent', b.dataset.accent); } catch (e) {}
+        paint();
+      });
+    });
+    paint();
+
+    document.getElementById('theme-toggle').addEventListener('click', function () {
+      var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+      try { localStorage.setItem('shree.theme', next); } catch (e) {}
+    });
+  })();
+
+  /* ============================================================
+     PROJECT MOTION REEL — 4-scene animated walkthrough (canvas + rAF)
+     Scene 0: Autonomous Agent Loop & Tool Calling
+     Scene 1: Transformer Architecture & RoPE Decode
+     Scene 2: Time Machine Snapshots & Git Rollback
+     Scene 3: Persistent Shell & CUDA Hardware Acceleration
+  ============================================================ */
+  (function () {
+    var canvas = document.getElementById('hero-reel-canvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var W = 0, H = 0, t0 = performance.now();
+    var visible = true;
+    var raf = 0;
+    var currentScene = 0;
+    var manualScene = -1;
+    var manualUntil = 0;
+    var sceneDuration = 3.8;
+    var totalScenes = 4;
+
+    var tabs = document.querySelectorAll('.reel-tab');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        var s = parseInt(tab.dataset.scene, 10);
+        if (!isNaN(s)) {
+          manualScene = s;
+          manualUntil = performance.now() + 8000;
+          updateTabs(s);
+        }
+      });
+    });
+
+    function updateTabs(idx) {
+      tabs.forEach(function (t, i) {
+        t.classList.toggle('active', i === idx);
+      });
+    }
+
+    function size() {
+      var r = canvas.getBoundingClientRect();
+      if (r.width > 0) {
+        var nw = Math.max(2, Math.round(r.width * dpr));
+        var nh = Math.max(2, Math.round(r.height * dpr));
+        if (nw !== W || nh !== H) {
+          W = canvas.width = nw;
+          H = canvas.height = nh;
+        }
+      }
+    }
+    window.addEventListener('resize', size);
+    size();
+
+    function easeIO(x) { return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+    function getTokens() {
+      var root = document.documentElement;
+      var cs = getComputedStyle(root);
+      var V = function (name, fb) { return cs.getPropertyValue(name).trim() || fb; };
+      var isDark = root.dataset.theme === 'dark';
+      return {
+        isDark: isDark,
+        accent: V('--accent', '#c2551f'),
+        surface: V('--surface', isDark ? '#191b1f' : '#ffffff'),
+        surface2: V('--surface-2', isDark ? '#1e2126' : '#faf9f7'),
+        surface3: V('--surface-3', isDark ? '#24272d' : '#f1efeb'),
+        bg: V('--bg', isDark ? '#131417' : '#f7f6f3'),
+        bgSunk: V('--bg-sunk', isDark ? '#0d0e10' : '#efede8'),
+        line: V('--line', isDark ? '#2b2f36' : '#e0ddd6'),
+        lineStrong: V('--line-strong', isDark ? '#3a3f48' : '#c9c5bb'),
+        text: V('--text', isDark ? '#e8e6e1' : '#1c1b19'),
+        text2: V('--text-2', isDark ? '#9e9b93' : '#55524c'),
+        text3: V('--text-3', isDark ? '#6b6861' : '#86827a'),
+        green: '#2ea043',
+        greenSoft: isDark ? 'rgba(46,160,67,0.20)' : 'rgba(46,160,67,0.12)',
+        blue: '#58a6ff',
+        red: '#f85149'
+      };
+    }
+
+    function rr(x, y, w, h, r) {
+      r = Math.max(0, Math.min(r, w / 2, h / 2));
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function txt(s, x, y, size, col, align, weight, fontType) {
+      ctx.fillStyle = col;
+      ctx.textAlign = align || 'left';
+      ctx.textBaseline = 'alphabetic';
+      var fam = fontType === 'mono' ? 'ui-monospace, "SF Mono", "JetBrains Mono", Consolas, monospace'
+              : 'ui-sans-serif, system-ui, -apple-system, sans-serif';
+      ctx.font = (weight ? weight + ' ' : '400 ') + Math.round(size) + 'px ' + fam;
+      ctx.fillText(s, x, y);
+    }
+
+    function dot(x, y, r, col) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawSceneAgent(tok, bx, by, bw, bh, lo, w, h) {
+      ctx.fillStyle = tok.surface;
+      ctx.strokeStyle = tok.line;
+      ctx.lineWidth = 1;
+      rr(bx, by, bw, bh * 0.13, 6);
+      ctx.fill(); ctx.stroke();
+      dot(bx + 14, by + bh * 0.065, 4, tok.green);
+      txt("Autonomous Coding Loop", bx + 26, by + bh * 0.088, w * 0.024, tok.text, "left", 600);
+      txt("tools / approval / sandbox", bx + bw - 12, by + bh * 0.088, w * 0.021, tok.text3, "right", 400, "mono");
+
+      var card1Y = by + bh * 0.17;
+      var card1H = bh * 0.20;
+      ctx.fillStyle = tok.surface;
+      ctx.strokeStyle = tok.line;
+      rr(bx, card1Y, bw, card1H, 6);
+      ctx.fill(); ctx.stroke();
+      dot(bx + 14, card1Y + card1H * 0.45, 3.5, tok.blue);
+      txt("USER PROMPT", bx + 26, card1Y + card1H * 0.38, w * 0.019, tok.text3, "left", 500, "mono");
+      txt('"Create static KV-cache & benchmark decoding speed"', bx + 26, card1Y + card1H * 0.76, w * 0.023, tok.text, "left", 500);
+
+      var p2 = easeIO(clamp((lo - 0.4) / 0.45, 0, 1));
+      if (p2 > 0) {
+        ctx.globalAlpha = p2;
+        var card2Y = by + bh * 0.41;
+        var card2H = bh * 0.24;
+        ctx.fillStyle = tok.surface2;
+        ctx.strokeStyle = lo > 1.2 ? tok.accent : tok.line;
+        ctx.lineWidth = 1;
+        rr(bx, card2Y, bw, card2H, 6);
+        ctx.fill(); ctx.stroke();
+        dot(bx + 14, card2Y + card2H * 0.35, 4, tok.accent);
+        txt("TOOL: filesystem.write_file", bx + 26, card2Y + card2H * 0.36, w * 0.021, tok.accent, "left", 600, "mono");
+        txt("path: inference/runtime.py (+64 lines)", bx + 26, card2Y + card2H * 0.72, w * 0.022, tok.text2, "left", 400, "mono");
+        if (lo > 1.2) {
+          ctx.fillStyle = tok.greenSoft;
+          ctx.strokeStyle = tok.green;
+          rr(bx + bw - 105, card2Y + card2H * 0.25, 92, card2H * 0.5, 4);
+          ctx.fill(); ctx.stroke();
+          txt("✓ APPROVED", bx + bw - 59, card2Y + card2H * 0.58, w * 0.019, tok.green, "center", 600, "mono");
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      var p3 = easeIO(clamp((lo - 1.5) / 0.45, 0, 1));
+      if (p3 > 0) {
+        ctx.globalAlpha = p3;
+        var card3Y = by + bh * 0.69;
+        var card3H = bh * 0.25;
+        ctx.fillStyle = tok.surface;
+        ctx.strokeStyle = tok.line;
+        rr(bx, card3Y, bw, card3H, 6);
+        ctx.fill(); ctx.stroke();
+        txt("$ pytest tests/test_runtime.py", bx + 14, card3Y + card3H * 0.42, w * 0.022, tok.text3, "left", 400, "mono");
+        dot(bx + 14, card3Y + card3H * 0.76, 4, tok.green);
+        txt("✓ 18 passed in 0.42s · 0 regressions", bx + 26, card3Y + card3H * 0.80, w * 0.022, tok.green, "left", 600, "mono");
+        txt("348.8 tok/s ready", bx + bw - 14, card3Y + card3H * 0.80, w * 0.021, tok.accent, "right", 600, "mono");
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    function drawSceneModel(tok, bx, by, bw, bh, lo, w, h) {
+      ctx.fillStyle = tok.surface;
+      ctx.strokeStyle = tok.line;
+      rr(bx, by, bw, bh * 0.13, 6);
+      ctx.fill(); ctx.stroke();
+      dot(bx + 14, by + bh * 0.065, 4, tok.accent);
+      txt("Transformer Architecture", bx + 26, by + bh * 0.088, w * 0.024, tok.text, "left", 600);
+      txt("78.7M (Medium) · RoPE + SwiGLU + GQA", bx + bw - 12, by + bh * 0.088, w * 0.021, tok.text3, "right", 400, "mono");
+
+      var steps = ["BPE 4K", "RoPE Emb", "GQA Attn", "SwiGLU", "Logits"];
+      var stepW = (bw - (steps.length - 1) * 8) / steps.length;
+      var stepH = bh * 0.22;
+      var stepY = by + bh * 0.18;
+      steps.forEach(function (s, i) {
+        var sp = easeIO(clamp((lo - i * 0.12) / 0.35, 0, 1));
+        if (sp <= 0) return;
+        ctx.globalAlpha = sp;
+        var sx = bx + i * (stepW + 8);
+        var isHigh = i === 2 || i === 3;
+        ctx.fillStyle = isHigh ? tok.surface2 : tok.surface;
+        ctx.strokeStyle = isHigh ? tok.accent : tok.line;
+        ctx.lineWidth = isHigh ? 1.4 : 1;
+        rr(sx, stepY, stepW, stepH, 5);
+        ctx.fill(); ctx.stroke();
+        txt(s, sx + stepW / 2, stepY + stepH * 0.58, w * 0.021, isHigh ? tok.accent : tok.text, "center", 600, "mono");
+        ctx.globalAlpha = 1;
+      });
+
+      var waveY = by + bh * 0.46;
+      var waveH = bh * 0.22;
+      ctx.fillStyle = tok.surface;
+      ctx.strokeStyle = tok.line;
+      rr(bx, waveY, bw, waveH, 6);
+      ctx.fill(); ctx.stroke();
+      txt("Rotary Position Embeddings (RoPE)", bx + 12, waveY + waveH * 0.32, w * 0.02, tok.text3, "left", 500, "mono");
+
+      ctx.strokeStyle = tok.accent;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      for (var px = 0; px < bw - 24; px++) {
+        var ang = (px * 0.04) + lo * 4.5;
+        var py = (waveY + waveH * 0.65) + Math.sin(ang) * (waveH * 0.22);
+        if (px === 0) ctx.moveTo(bx + 12 + px, py);
+        else ctx.lineTo(bx + 12 + px, py);
+      }
+      ctx.stroke();
+
+      var tokenY = by + bh * 0.72;
+      var tokenH = bh * 0.22;
+      ctx.fillStyle = tok.surface2;
+      ctx.strokeStyle = tok.line;
+      rr(bx, tokenY, bw, tokenH, 6);
+      ctx.fill(); ctx.stroke();
+
+      var tokens = ["def", "forward", "(x):", "return", "swiglu(x)", "348.8 t/s"];
+      var tx = bx + 12;
+      tokens.forEach(function (tokItem, idx) {
+        var tp = clamp((lo - 0.7 - idx * 0.2) / 0.25, 0, 1);
+        if (tp <= 0) return;
+        ctx.globalAlpha = tp;
+        var isSpeed = idx === tokens.length - 1;
+        var itmW = w * 0.12;
+        ctx.fillStyle = isSpeed ? tok.accent : tok.surface;
+        ctx.strokeStyle = isSpeed ? tok.accent : tok.line;
+        rr(tx, tokenY + tokenH * 0.2, itmW, tokenH * 0.6, 4);
+        ctx.fill(); ctx.stroke();
+        txt(tokItem, tx + itmW / 2, tokenY + tokenH * 0.60, w * 0.019, isSpeed ? "#fff" : tok.text, "center", 500, "mono");
+        tx += itmW + 6;
+        ctx.globalAlpha = 1;
+      });
+    }
+
+    function drawSceneTimeMachine(tok, bx, by, bw, bh, lo, w, h) {
+      ctx.fillStyle = tok.surface;
+      ctx.strokeStyle = tok.line;
+      rr(bx, by, bw, bh * 0.13, 6);
+      ctx.fill(); ctx.stroke();
+      dot(bx + 14, by + bh * 0.065, 4, tok.blue);
+      txt("Time Machine · Content Addressed", bx + 26, by + bh * 0.088, w * 0.024, tok.text, "left", 600);
+      txt("sha256 blobs · non-destructive rollback", bx + bw - 12, by + bh * 0.088, w * 0.021, tok.text3, "right", 400, "mono");
+
+      var dagY = by + bh * 0.18;
+      var dagH = bh * 0.38;
+      ctx.fillStyle = tok.surface;
+      ctx.strokeStyle = tok.line;
+      rr(bx, dagY, bw, dagH, 6);
+      ctx.fill(); ctx.stroke();
+
+      var nodes = [
+        { label: "origin", hash: "a102f9", x: bx + bw * 0.15, y: dagY + dagH * 0.5 },
+        { label: "edit_1", hash: "d29c6f", x: bx + bw * 0.42, y: dagY + dagH * 0.35 },
+        { label: "fork",   hash: "4e910f", x: bx + bw * 0.72, y: dagY + dagH * 0.25 },
+        { label: "HEAD",   hash: "8b19cd", x: bx + bw * 0.78, y: dagY + dagH * 0.72, active: true },
+      ];
+
+      ctx.strokeStyle = tok.lineStrong;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(nodes[0].x, nodes[0].y);
+      ctx.lineTo(nodes[1].x, nodes[1].y);
+      ctx.lineTo(nodes[2].x, nodes[2].y);
+      ctx.stroke();
+
+      ctx.strokeStyle = tok.accent;
+      ctx.beginPath();
+      ctx.moveTo(nodes[1].x, nodes[1].y);
+      ctx.lineTo(nodes[3].x, nodes[3].y);
+      ctx.stroke();
+
+      nodes.forEach(function (node, idx) {
+        var np = easeIO(clamp((lo - idx * 0.2) / 0.3, 0, 1));
+        if (np <= 0) return;
+        ctx.globalAlpha = np;
+        dot(node.x, node.y, node.active ? 7 : 5, node.active ? tok.accent : tok.surface);
+        ctx.strokeStyle = node.active ? tok.accent : tok.lineStrong;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(node.x, node.y, node.active ? 7 : 5, 0, Math.PI * 2); ctx.stroke();
+        txt(node.hash, node.x, node.y - 10, w * 0.02, node.active ? tok.accent : tok.text2, "center", 600, "mono");
+        txt(node.label, node.x, node.y + 18, w * 0.018, tok.text3, "center", 400, "mono");
+        ctx.globalAlpha = 1;
+      });
+
+      var diffY = by + bh * 0.60;
+      var diffH = bh * 0.34;
+      ctx.fillStyle = tok.surface2;
+      ctx.strokeStyle = tok.line;
+      rr(bx, diffY, bw, diffH, 6);
+      ctx.fill(); ctx.stroke();
+
+      txt("Snapshot Diff: d29c6fa8f28f -> 8b19cd04", bx + 14, diffY + diffH * 0.30, w * 0.021, tok.text2, "left", 600, "mono");
+      txt("- def slow_kv_cache(): return None", bx + 14, diffY + diffH * 0.60, w * 0.021, tok.red, "left", 400, "mono");
+      txt("+ def static_kv_cache(): return StaticKVCache()", bx + 14, diffY + diffH * 0.85, w * 0.021, tok.green, "left", 500, "mono");
+    }
+
+    function drawSceneHardware(tok, bx, by, bw, bh, lo, w, h) {
+      ctx.fillStyle = tok.surface;
+      ctx.strokeStyle = tok.line;
+      rr(bx, by, bw, bh * 0.13, 6);
+      ctx.fill(); ctx.stroke();
+      dot(bx + 14, by + bh * 0.065, 4, tok.green);
+      txt("Persistent Terminal & CUDA GPU", bx + 26, by + bh * 0.088, w * 0.024, tok.text, "left", 600);
+      txt("RTX 4060 · 348.8 tok/s decode", bx + bw - 12, by + bh * 0.088, w * 0.021, tok.text3, "right", 400, "mono");
+
+      var shellY = by + bh * 0.17;
+      var shellH = bh * 0.40;
+      ctx.fillStyle = tok.isDark ? '#0b0c0e' : '#1e1e1e';
+      rr(bx, shellY, bw, shellH, 6);
+      ctx.fill();
+
+      txt("PS C:\\workspace> python scripts/launch.py", bx + 14, shellY + shellH * 0.28, w * 0.021, '#a6e22e', 'left', 400, 'mono');
+      txt("[hardware] NVIDIA GeForce RTX 4060 Laptop GPU (BF16, CUDA)", bx + 14, shellY + shellH * 0.54, w * 0.020, '#66d9ef', 'left', 400, 'mono');
+      txt("[runtime]  CUDA Graphs: ENABLED · KV cache: STATIC 2048", bx + 14, shellY + shellH * 0.80, w * 0.020, '#f8f8f2', 'left', 400, 'mono');
+
+      var barY = by + bh * 0.61;
+      var barH = bh * 0.33;
+      ctx.fillStyle = tok.surface;
+      ctx.strokeStyle = tok.line;
+      rr(bx, barY, bw, barH, 6);
+      ctx.fill(); ctx.stroke();
+
+      txt("Decode Speed Comparison (tokens/second)", bx + 14, barY + barH * 0.30, w * 0.021, tok.text2, "left", 600, "mono");
+
+      var maxW = bw - 180;
+      var b1W = (112 / 350) * maxW;
+      ctx.fillStyle = tok.surface3;
+      rr(bx + 14, barY + barH * 0.44, b1W, 11, 3);
+      ctx.fill();
+      txt("Eager: 112 tok/s", bx + 24 + b1W, barY + barH * 0.54, w * 0.019, tok.text3, "left", 400, "mono");
+
+      var b2Progress = easeIO(clamp((lo - 0.4) / 0.6, 0, 1));
+      var b2W = (348.8 / 350) * maxW * b2Progress;
+      ctx.fillStyle = tok.accent;
+      rr(bx + 14, barY + barH * 0.68, b2W, 13, 3);
+      ctx.fill();
+      if (b2Progress > 0.5) {
+        txt("URA-Shree: 348.8 tok/s (+211%)", bx + 24 + b2W, barY + barH * 0.81, w * 0.020, tok.accent, "left", 600, "mono");
+      }
+    }
+
+    function frame(now) {
+      if (!visible) return;
+      size();
+      if (W < 4 || H < 4) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
+
+      var tok = getTokens();
+      var w = W / dpr;
+      var h = H / dpr;
+
+      var elapsed = (now - t0) / 1000;
+      var totalDuration = totalScenes * sceneDuration;
+      var sceneIdx = 0;
+      var lo = 0;
+
+      if (manualScene >= 0 && now < manualUntil) {
+        sceneIdx = manualScene;
+        lo = (elapsed % sceneDuration);
+      } else {
+        manualScene = -1;
+        var tt = elapsed % totalDuration;
+        sceneIdx = Math.floor(tt / sceneDuration);
+        lo = tt % sceneDuration;
+      }
+
+      if (sceneIdx !== currentScene) {
+        currentScene = sceneIdx;
+        updateTabs(sceneIdx);
+      }
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.fillStyle = tok.bgSunk;
+      ctx.fillRect(0, 0, w, h);
+
+      var slide = (1 - easeIO(clamp(lo / 0.4, 0, 1))) * w * 0.06;
+      ctx.save();
+      ctx.translate(slide, 0);
+
+      var pad = Math.round(w * 0.045);
+      var innerW = w - 2 * pad;
+      var innerH = h - 2 * pad - 12;
+
+      if (sceneIdx === 0) {
+        drawSceneAgent(tok, pad, pad, innerW, innerH, lo, w, h);
+      } else if (sceneIdx === 1) {
+        drawSceneModel(tok, pad, pad, innerW, innerH, lo, w, h);
+      } else if (sceneIdx === 2) {
+        drawSceneTimeMachine(tok, pad, pad, innerW, innerH, lo, w, h);
+      } else {
+        drawSceneHardware(tok, pad, pad, innerW, innerH, lo, w, h);
+      }
+
+      ctx.restore();
+
+      var gap = 12;
+      var dotsW = (totalScenes - 1) * gap;
+      var startX = w / 2 - dotsW / 2;
+      var dotsY = h - 10;
+      for (var d = 0; d < totalScenes; d++) {
+        var isCur = d === sceneIdx;
+        dot(startX + d * gap, dotsY, isCur ? 3.2 : 2, isCur ? tok.accent : tok.lineStrong);
+      }
+
+      raf = requestAnimationFrame(frame);
+    }
+
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting && !visible) {
+          visible = true;
+          t0 = performance.now();
+          raf = requestAnimationFrame(frame);
+        } else if (!e.isIntersecting && visible) {
+          visible = false;
+          cancelAnimationFrame(raf);
+        }
+      });
+    }, { rootMargin: '100px' });
+    io.observe(canvas);
+
+    raf = requestAnimationFrame(frame);
+  })();
+
+  /* ============================================================
+     RISING LINES (React Bits Pro aesthetic)
+     Ascending lines & particles with laser beam effect.
+     - Dynamic theme & accent color integration
+     - Preserves 100% text readability & contrast
+  ============================================================ */
+  (function () {
+    var canvas = document.getElementById('rising-lines-canvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var W = 0, H = 0;
+    var visible = true;
+    var raf = 0;
+
+    function size() {
+      var w = window.innerWidth;
+      var h = window.innerHeight;
+      W = canvas.width = Math.max(2, Math.round(w * dpr));
+      H = canvas.height = Math.max(2, Math.round(h * dpr));
+    }
+    window.addEventListener('resize', size);
+    size();
+
+    var lineCount = Math.min(64, Math.floor(window.innerWidth / 22));
+    var particleCount = Math.min(48, Math.floor(window.innerWidth / 28));
+    var lines = [];
+    var particles = [];
+
+    function initPool() {
+      lines = [];
+      particles = [];
+      var w = W / dpr;
+      var h = H / dpr;
+      for (var i = 0; i < lineCount; i++) {
+        lines.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          len: Math.random() * 95 + 40,
+          speed: Math.random() * 1.8 + 0.8,
+          width: Math.random() < 0.12 ? Math.random() * 2.2 + 1.2 : Math.random() * 1.1 + 0.5,
+          alpha: Math.random() * 0.65 + 0.25,
+          isLaser: Math.random() < 0.08,
+          pulse: Math.random() * Math.PI * 2,
+          pulseSpeed: Math.random() * 0.04 + 0.02
+        });
+      }
+      for (var j = 0; j < particleCount; j++) {
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          radius: Math.random() * 1.6 + 0.7,
+          speedY: Math.random() * 1.3 + 0.5,
+          speedX: (Math.random() - 0.5) * 0.35,
+          alpha: Math.random() * 0.65 + 0.2,
+          flicker: Math.random() * Math.PI * 2,
+          flickerSpeed: Math.random() * 0.05 + 0.02
+        });
+      }
+    }
+    initPool();
+
+    function parseHexColor(hex) {
+      if (!hex) return { r: 194, g: 85, b: 31 };
+      hex = hex.replace('#', '').trim();
+      if (hex.length === 3) {
+        hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+      }
+      var val = parseInt(hex, 16);
+      if (isNaN(val)) return { r: 194, g: 85, b: 31 };
+      return {
+        r: (val >> 16) & 255,
+        g: (val >> 8) & 255,
+        b: val & 255
+      };
+    }
+
+    function getColors() {
+      var root = document.documentElement;
+      var cs = getComputedStyle(root);
+      var accent = cs.getPropertyValue('--accent').trim() || '#c2551f';
+      var isDark = root.dataset.theme === 'dark';
+      var rgb = parseHexColor(accent);
+      return {
+        accent: accent,
+        rgb: rgb,
+        isDark: isDark
+      };
+    }
+
+    var lastTime = performance.now();
+
+    function animate(now) {
+      if (!visible) return;
+      var dt = Math.min(0.1, (now - lastTime) / 1000);
+      lastTime = now;
+
+      var w = W / dpr;
+      var h = H / dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      var cols = getColors();
+
+      ctx.globalCompositeOperation = 'source-over';
+
+      // 1. Clean minimal horizon
+      // Kept clean and neutral so dark mode is deep and crisp without red haze
+
+      // 2. Ascending lines & streaks (crisp, clearly visible and theme-reactive)
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        line.y -= line.speed * (dt * 60);
+        line.pulse += line.pulseSpeed;
+
+        if (line.y + line.len < 0) {
+          line.y = h + Math.random() * 40;
+          line.x = Math.random() * w;
+          line.len = Math.random() * 95 + 35;
+          line.speed = Math.random() * 1.6 + 0.8;
+          line.isLaser = Math.random() < 0.09;
+        }
+
+        var lineAlpha = line.alpha * (0.7 + 0.3 * Math.sin(line.pulse));
+        var yFrac = line.y / h;
+        var edgeFade = Math.sin(Math.min(1, Math.max(0, yFrac)) * Math.PI);
+        var finalAlpha = lineAlpha * (0.35 + 0.65 * edgeFade) * (cols.isDark ? 0.52 : 0.40);
+
+        if (finalAlpha <= 0.02) continue;
+
+        ctx.globalAlpha = finalAlpha;
+        var grad = ctx.createLinearGradient(0, line.y, 0, line.y + line.len);
+
+        if (cols.isDark) {
+          var strokeCol = 'rgba(' + Math.round(210 * 0.7 + cols.rgb.r * 0.3) + ',' +
+                                   Math.round(225 * 0.7 + cols.rgb.g * 0.3) + ',' +
+                                   Math.round(245 * 0.7 + cols.rgb.b * 0.3) + ', 0.78)';
+          if (line.isLaser) {
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(0.3, 'rgba(' + cols.rgb.r + ',' + cols.rgb.g + ',' + cols.rgb.b + ', 0.90)');
+            grad.addColorStop(1, 'transparent');
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = line.width * 1.6;
+          } else {
+            grad.addColorStop(0, strokeCol);
+            grad.addColorStop(1, 'transparent');
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = line.width;
+          }
+        } else {
+          var lr = Math.round(45 * 0.65 + cols.rgb.r * 0.35 * 0.7);
+          var lg = Math.round(58 * 0.65 + cols.rgb.g * 0.35 * 0.7);
+          var lb = Math.round(75 * 0.65 + cols.rgb.b * 0.35 * 0.7);
+          var strokeCol = 'rgba(' + lr + ',' + lg + ',' + lb + ', 0.72)';
+          if (line.isLaser) {
+            grad.addColorStop(0, 'rgba(' + Math.round(cols.rgb.r * 0.75) + ',' + Math.round(cols.rgb.g * 0.75) + ',' + Math.round(cols.rgb.b * 0.75) + ', 0.95)');
+            grad.addColorStop(0.35, strokeCol);
+            grad.addColorStop(1, 'transparent');
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = line.width * 1.35;
+          } else {
+            grad.addColorStop(0, strokeCol);
+            grad.addColorStop(1, 'transparent');
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = line.width;
+          }
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(line.x, line.y);
+        ctx.lineTo(line.x, line.y + line.len);
+        ctx.stroke();
+
+        if (line.isLaser) {
+          if (cols.isDark) {
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(line.x, line.y, line.width * 1.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(' + cols.rgb.r + ',' + cols.rgb.g + ',' + cols.rgb.b + ', 0.45)';
+            ctx.beginPath();
+            ctx.arc(line.x, line.y, line.width * 2.2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.fillStyle = 'rgba(' + Math.round(cols.rgb.r * 0.65) + ',' + Math.round(cols.rgb.g * 0.65) + ',' + Math.round(cols.rgb.b * 0.65) + ', 0.92)';
+            ctx.beginPath();
+            ctx.arc(line.x, line.y, line.width * 1.1, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // 3. Ascending particles (crisp and theme-reactive)
+      for (var j = 0; j < particles.length; j++) {
+        var p = particles[j];
+        p.y -= p.speedY * (dt * 60);
+        p.x += p.speedX;
+        p.flicker += p.flickerSpeed;
+
+        if (p.y < 0) {
+          p.y = h + Math.random() * 20;
+          p.x = Math.random() * w;
+        }
+
+        var pAlpha = p.alpha * (0.65 + 0.35 * Math.sin(p.flicker));
+        var pEdgeFade = Math.sin(Math.min(1, Math.max(0, p.y / h)) * Math.PI);
+        var pFinalAlpha = pAlpha * (0.35 + 0.65 * pEdgeFade) * (cols.isDark ? 0.58 : 0.44);
+
+        if (pFinalAlpha <= 0.02) continue;
+
+        ctx.globalAlpha = pFinalAlpha;
+        if (cols.isDark) {
+          var pr = Math.round(220 * 0.72 + cols.rgb.r * 0.28);
+          var pg = Math.round(235 * 0.72 + cols.rgb.g * 0.28);
+          var pb = Math.round(255 * 0.72 + cols.rgb.b * 0.28);
+          ctx.fillStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ', 0.90)';
+        } else {
+          var pr = Math.round(48 * 0.68 + cols.rgb.r * 0.32 * 0.7);
+          var pg = Math.round(62 * 0.68 + cols.rgb.g * 0.32 * 0.7);
+          var pb = Math.round(82 * 0.68 + cols.rgb.b * 0.32 * 0.7);
+          ctx.fillStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ', 0.78)';
+        }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius * 1.0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = 1;
+
+      raf = requestAnimationFrame(animate);
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        visible = false;
+        cancelAnimationFrame(raf);
+      } else {
+        visible = true;
+        lastTime = performance.now();
+        raf = requestAnimationFrame(animate);
+      }
+    });
+
+    raf = requestAnimationFrame(animate);
+  })();
+
+  /* ============================================================
+     ASCII WAVES (React Bits Pro aesthetic)
+     Wave effect made of ASCII characters with cursor interaction.
+     - Active in light mode with calibrated 100% text readability
+     - Automatically synchronizes with theme accent colors & dark/light mode
+  ============================================================ */
+  (function () {
+    var canvas = document.getElementById('ascii-waves-canvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var W = 0, H = 0;
+    var visible = true;
+    var raf = 0;
+
+    var mouse = { x: -2000, y: -2000, targetX: -2000, targetY: -2000, strength: 0 };
+    window.addEventListener('mousemove', function (e) {
+      mouse.targetX = e.clientX;
+      mouse.targetY = e.clientY;
+      mouse.strength = 1.0;
+    });
+    window.addEventListener('mouseleave', function () {
+      mouse.targetX = -2000;
+      mouse.targetY = -2000;
+      mouse.strength = 0;
+    });
+
+    function size() {
+      var w = window.innerWidth;
+      var h = window.innerHeight;
+      W = canvas.width = Math.max(2, Math.round(w * dpr));
+      H = canvas.height = Math.max(2, Math.round(h * dpr));
+    }
+    window.addEventListener('resize', size);
+    size();
+
+    var chars = " .:-+*=%@#";
+    var charLen = chars.length;
+    var cellW = 16;
+    var cellH = 18;
+
+    function parseHexColor(hex) {
+      if (!hex) return { r: 194, g: 85, b: 31 };
+      hex = hex.replace('#', '').trim();
+      if (hex.length === 3) {
+        hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+      }
+      var val = parseInt(hex, 16);
+      if (isNaN(val)) return { r: 194, g: 85, b: 31 };
+      return {
+        r: (val >> 16) & 255,
+        g: (val >> 8) & 255,
+        b: val & 255
+      };
+    }
+
+    function getTokens() {
+      var root = document.documentElement;
+      var cs = getComputedStyle(root);
+      var accent = cs.getPropertyValue('--accent').trim() || '#c2551f';
+      var isDark = root.dataset.theme === 'dark';
+      var rgb = parseHexColor(accent);
+      return {
+        accent: accent,
+        rgb: rgb,
+        isDark: isDark
+      };
+    }
+
+    var t0 = performance.now();
+
+    function render(now) {
+      if (!visible) return;
+      var t = (now - t0) * 0.0014;
+      var w = W / dpr;
+      var h = H / dpr;
+
+      mouse.x += (mouse.targetX - mouse.x) * 0.08;
+      mouse.y += (mouse.targetY - mouse.y) * 0.08;
+      mouse.strength *= 0.97;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      var tok = getTokens();
+
+      ctx.font = '11.5px ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      var cols = Math.ceil(w / cellW);
+      var rows = Math.ceil(h / cellH);
+
+      for (var r = 0; r < rows; r++) {
+        var cy = r * cellH + cellH * 0.5;
+
+        for (var c = 0; c < cols; c++) {
+          var cx = c * cellW + cellW * 0.5;
+
+          var nx = cx * 0.0075;
+          var ny = cy * 0.009;
+
+          var w1 = Math.sin(nx * 1.5 + t * 1.6 + Math.cos(ny * 1.8 + t * 0.9));
+          var w2 = Math.cos(ny * 1.4 - t * 1.2 + Math.sin(nx * 1.2 - t * 1.5));
+          var waveVal = (w1 + w2) * 0.5;
+
+          var mDist = Math.hypot(cx - mouse.x, cy - mouse.y);
+          var mRipple = 0;
+          if (mDist < 450 && mouse.strength > 0.01) {
+            var mFactor = (1 - mDist / 450) * mouse.strength;
+            mRipple = Math.sin(mDist * 0.04 - t * 5.0) * mFactor * 1.5;
+          }
+
+          var normalized = (waveVal + mRipple + 1.0) * 0.5;
+          if (normalized < 0) normalized = 0;
+          if (normalized > 1) normalized = 1;
+
+          var charIndex = Math.floor(normalized * (charLen - 1));
+          var char = chars[charIndex];
+
+          if (!char || char === ' ') continue;
+
+          var r, g, b, charAlpha;
+          if (tok.isDark) {
+            charAlpha = 0.12 + normalized * 0.28;
+            if (normalized > 0.45) {
+              var mix = (normalized - 0.45) / 0.55;
+              r = Math.round(210 * (1 - mix * 0.45) + tok.rgb.r * (mix * 0.45));
+              g = Math.round(225 * (1 - mix * 0.45) + tok.rgb.g * (mix * 0.45));
+              b = Math.round(245 * (1 - mix * 0.45) + tok.rgb.b * (mix * 0.45));
+            } else {
+              r = 210; g = 225; b = 245;
+            }
+          } else {
+            charAlpha = 0.13 + normalized * 0.27;
+            if (normalized > 0.45) {
+              var mix = (normalized - 0.45) / 0.55;
+              var tr = Math.round(tok.rgb.r * 0.72);
+              var tg = Math.round(tok.rgb.g * 0.72);
+              var tb = Math.round(tok.rgb.b * 0.72);
+              r = Math.round(48 * (1 - mix * 0.42) + tr * (mix * 0.42));
+              g = Math.round(62 * (1 - mix * 0.42) + tg * (mix * 0.42));
+              b = Math.round(82 * (1 - mix * 0.42) + tb * (mix * 0.42));
+            } else {
+              r = 48; g = 62; b = 82;
+            }
+          }
+
+          ctx.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + charAlpha + ')';
+
+          var edgeFadeY = Math.sin(Math.min(1, Math.max(0, cy / h)) * Math.PI);
+          ctx.globalAlpha = 0.45 + 0.55 * edgeFadeY;
+
+          ctx.fillText(char, cx, cy);
+        }
+      }
+
+      ctx.globalAlpha = 1;
+      raf = requestAnimationFrame(render);
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        visible = false;
+        cancelAnimationFrame(raf);
+      } else {
+        visible = true;
+        raf = requestAnimationFrame(render);
+      }
+    });
+
+    raf = requestAnimationFrame(render);
+  })();
+</script>
+</body>
+</html>

@@ -1578,3 +1578,651 @@ input:checked + .slider:before {
   50% { opacity: 0.4; }
 }
 
+
+/* ── Accent variants ────────────────────────────────────────────────────── */
+/*
+  data-accent on <html> swaps only the accent family; the neutral ramp and
+  every component rule are untouched. Light values first, dark below, so the
+  two attributes compose without either theme branching on the other.
+*/
+
+:root[data-accent='ember']   { --accent: #c2551f; --accent-hover: #a84718; --accent-soft: #fbeee6; --accent-line: #f0cdb6; --on-accent: #fffaf6; }
+:root[data-accent='crimson'] { --accent: #b0233f; --accent-hover: #971630; --accent-soft: #fbe9ed; --accent-line: #f0c4ce; --on-accent: #fff8f9; }
+:root[data-accent='indigo']  { --accent: #4c56b8; --accent-hover: #3f479f; --accent-soft: #ecedfa; --accent-line: #cbcff0; --on-accent: #f9f9ff; }
+:root[data-accent='moss']    { --accent: #4a7a48; --accent-hover: #3c6539; --accent-soft: #ecf3ec; --accent-line: #c9dfc7; --on-accent: #f9fdf8; }
+:root[data-accent='slate']   { --accent: #4a5560; --accent-hover: #39424b; --accent-soft: #eef0f2; --accent-line: #ccd3d9; --on-accent: #f9fbfc; }
+
+:root[data-theme='dark'][data-accent='ember']   { --accent: #e0713a; --accent-hover: #ef8149; --accent-soft: #2a1d15; --accent-line: #4a2f1e; --on-accent: #1a0f07; }
+:root[data-theme='dark'][data-accent='crimson'] { --accent: #e26074; --accent-hover: #ee7386; --accent-soft: #2c1519; --accent-line: #4a2029; --on-accent: #1c0c0f; }
+:root[data-theme='dark'][data-accent='indigo']  { --accent: #8b93ec; --accent-hover: #9ba2f2; --accent-soft: #1b1c2e; --accent-line: #2f3252; --on-accent: #0e0f1c; }
+:root[data-theme='dark'][data-accent='moss']    { --accent: #74b877; --accent-hover: #86c689; --accent-soft: #16241a; --accent-line: #274a2b; --on-accent: #0b1a0d; }
+:root[data-theme='dark'][data-accent='slate']   { --accent: #9aa7b4; --accent-hover: #adb8c3; --accent-soft: #1b1f24; --accent-line: #333c45; --on-accent: #101318; }
+
+/* Selection follows the accent rather than sitting on a fixed tint. */
+::selection { background: var(--accent-line); color: var(--text); }
+
+/* ── Ambient backdrop ───────────────────────────────────────────────────── */
+/*
+  Two very slow accent washes on a fixed, non-interactive layer behind the
+  whole workbench. Transform-only, so it never invalidates layout while the
+  chat is streaming.
+*/
+
+.ambient {
+  position: fixed;
+  inset: -25vh -15vw;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background:
+    radial-gradient(38vw 38vw at 22% 8%, var(--accent-soft), transparent 62%),
+    radial-gradient(34vw 34vw at 86% 78%, var(--accent-soft), transparent 60%);
+  animation: ambient-drift 38s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes ambient-drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(3%, 2%, 0) scale(1.09); }
+}
+
+.app { position: relative; z-index: 1; }
+
+/* ── Entry motion ───────────────────────────────────────────────────────── */
+
+@keyframes slide-in-left  { from { opacity: 0; transform: translate3d(-14px, 0, 0); } }
+@keyframes slide-in-right { from { opacity: 0; transform: translate3d(14px, 0, 0); } }
+@keyframes slide-in-up    { from { opacity: 0; transform: translate3d(0, 10px, 0); } }
+
+.rail        { animation: slide-in-left 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.pane-side   { animation: slide-in-left 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.pane-dock   { animation: slide-in-right 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.header      { animation: slide-in-up 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Each turn enters once, from just below where it lands. */
+.turn { animation: slide-in-up 340ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Rail buttons cascade in behind the rail itself. */
+.rail-btn {
+  animation: slide-in-left 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 90ms;
+}
+
+/* ── Text motion ────────────────────────────────────────────────────────── */
+/*
+  The empty-state headline reveals word by word. Each word is a clipped box
+  and the span inside it slides up, so nothing overflows mid-animation.
+*/
+
+.word { display: inline-block; overflow: hidden; vertical-align: bottom; }
+.word > span {
+  display: inline-block;
+  transform: translateY(105%);
+  animation: word-up 640ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+@keyframes word-up { to { transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient { animation: none; }
+  .word > span { transform: none; animation: none; }
+  .rail, .pane-side, .pane-dock, .header, .turn, .rail-btn { animation: none; }
+}
+
+/* ── Accent swatches ────────────────────────────────────────────────────── */
+
+.swatches { display: flex; gap: 8px; align-items: center; margin-top: 2px; }
+.swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--sw);
+  transition: transform var(--speed) ease, box-shadow var(--speed) ease;
+}
+.swatch:hover { transform: translateY(-2px); }
+.swatch.active { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--sw); }
+
+/* Staggered entry for lists; the delay is set inline per item. */
+.rise-in { animation: rise 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in { animation: none; }
+}
+
+/* ══ Modernisation layer ═════════════════════════════════════════════════ */
+/*
+  Everything below refines the shell that the blocks above define. It is kept
+  in one place so the original instrument-panel rules stay readable and the
+  polish can be read (or reverted) as a unit.
+*/
+
+:root {
+  /* Aliases for names a few components already reached for. */
+  --t-fast: 130ms;
+  --shadow-sm: var(--shadow-1);
+  --r-pill: 999px;
+  --text-1: var(--text);
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-micro: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Hairlines that composite over whatever sits behind a glass surface. */
+  --hairline: rgba(17, 17, 19, 0.09);
+  --glass: color-mix(in srgb, var(--surface) 80%, transparent);
+  --glass-sunk: color-mix(in srgb, var(--bg-sunk) 82%, transparent);
+}
+
+:root[data-theme='dark'] {
+  --line:        rgba(244, 244, 243, 0.10);
+  --line-strong: rgba(244, 244, 243, 0.20);
+  --hairline:    rgba(255, 255, 255, 0.08);
+  --glass: color-mix(in srgb, var(--surface) 72%, transparent);
+  --glass-sunk: color-mix(in srgb, var(--bg-sunk) 76%, transparent);
+}
+
+/* ── Glass surfaces ─────────────────────────────────────────────────────── */
+
+.header {
+  background: var(--surface);
+  background: var(--glass);
+  backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom-color: var(--hairline);
+  z-index: 12;
+}
+
+.rail {
+  background: var(--bg-sunk);
+  background: var(--glass-sunk);
+  backdrop-filter: blur(12px);
+  border-right-color: var(--hairline);
+}
+
+.rail-brand {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 9px;
+  background: transparent;
+  margin-bottom: 10px;
+  flex: none;
+  transition: transform var(--t-fast) var(--ease-micro), background var(--t-fast);
+}
+.rail-brand:hover { background: var(--surface-3); transform: translateY(-1px); }
+.rail-brand:active { transform: scale(0.94); }
+
+.rail-btn { transition: color var(--t-fast), background var(--t-fast), transform var(--t-fast) var(--ease-micro); }
+.rail-btn:active { transform: scale(0.94); }
+
+.pane-side, .pane-dock { border-color: var(--hairline); }
+
+/* ── Keyboard hints ─────────────────────────────────────────────────────── */
+
+.kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1;
+}
+.hint-sep { margin: 0 5px; color: var(--text-3); }
+
+/* ── State pills ────────────────────────────────────────────────────────── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.pill-ok     { background: var(--ok-soft);     border-color: transparent; color: var(--ok); }
+.pill-warn   { background: var(--warn-soft);   border-color: transparent; color: var(--warn); }
+.pill-danger { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+.pill-live   { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+
+/* One chevron that rotates, rather than two glyphs swapping in and out. */
+.chevron {
+  flex: none;
+  transition: transform 200ms var(--ease);
+}
+.chevron.open { transform: rotate(90deg); }
+
+/* ── Chat refinements ───────────────────────────────────────────────────── */
+
+.chat-welcome { padding-top: 52px; }
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.turn-right { align-items: flex-end; }
+
+/* The copy affordance stays out of the way until the turn is hovered. */
+.turn-tools {
+  display: flex;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease-micro);
+}
+.turn:hover .turn-tools, .turn:focus-within .turn-tools { opacity: 1; }
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+}
+.copy-btn:hover { color: var(--text); background: var(--surface-3); border-color: var(--line); }
+.copy-btn.done { color: var(--ok); }
+
+.turn-meta .copy-btn { opacity: 0; }
+.turn:hover .turn-meta .copy-btn, .turn:focus-within .turn-meta .copy-btn { opacity: 1; }
+
+.turn-user {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: var(--shadow-1);
+}
+
+.tool {
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.tool.open { border-color: var(--line-strong); box-shadow: var(--shadow-1); }
+.tool-approval-needed { border-color: var(--warn); background: var(--warn-soft); }
+.tool-head { transition: background var(--t-fast); }
+
+.tool-approval-card {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--warn-soft);
+}
+.tool-approval-text { font-size: var(--fs-sm); line-height: 1.5; }
+.tool-approval-text code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* ── Prompt presets ─────────────────────────────────────────────────────── */
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
+  gap: 7px;
+}
+.preset {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  text-align: left;
+  transition: transform var(--t-fast) var(--ease-micro), border-color var(--t-fast),
+              background var(--t-fast);
+}
+.preset:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-line);
+  background: var(--surface-2);
+}
+.preset:active { transform: scale(0.99); }
+.preset-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.welcome-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 18px;
+  padding: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  transition: color var(--t-fast);
+}
+.welcome-hint:hover { color: var(--text-2); }
+
+.preset-menu-wrap { position: relative; }
+.preset-menu-scrim, .menu-scrim { position: fixed; inset: 0; z-index: 40; }
+.preset-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 41;
+  width: 280px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+  animation: rise 160ms var(--ease);
+}
+.preset-menu button, .menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.preset-menu button:hover, .menu button:hover { background: var(--surface-3); color: var(--text); }
+
+.composer {
+  background: var(--surface);
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+}
+.composer-chip { transition: all var(--t-fast) var(--ease-micro); }
+.composer-chip:active { transform: scale(0.97); }
+.composer-chip.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.composer-hint { display: inline-flex; align-items: center; }
+
+.btn-send { transition: transform var(--t-fast) var(--ease-micro), background var(--t-fast), color var(--t-fast); }
+.btn-send.active { box-shadow: none; border-color: var(--accent); }
+.btn-send.active:active { transform: scale(0.92); }
+
+.attachment { transition: border-color var(--t-fast), background var(--t-fast); }
+.attachment:hover { border-color: var(--line-strong); background: var(--surface); }
+
+/* ── Header menus and health chips ──────────────────────────────────────── */
+
+.menu-wrap { position: relative; display: inline-flex; }
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 41;
+  width: 200px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+  animation: rise 160ms var(--ease);
+}
+
+.chip-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 5px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.chip-group:hover, .chip-group.active { border-color: var(--line); background: var(--surface-2); }
+.chip { transition: border-color var(--t-fast), background var(--t-fast); }
+
+.palette-trigger { gap: 5px; color: var(--text-3); }
+.palette-trigger:hover { color: var(--text); }
+
+/* ── Health popover ─────────────────────────────────────────────────────── */
+
+.popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 45;
+  width: 320px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  background: var(--glass);
+  backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: var(--shadow-3);
+  animation: rise 180ms var(--ease);
+  overflow: hidden;
+}
+.popover-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+.popover-body { padding: 12px; }
+.popover-foot {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.popover-notes {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: 1.6;
+}
+
+.meter { margin-bottom: 11px; }
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+.meter-track {
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+/* scaleX keeps the bar on the compositor rather than resizing a box. */
+.meter-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  transition: transform 420ms var(--ease);
+}
+.meter-fill.hot { background: var(--danger); }
+
+/* ── Command palette ────────────────────────────────────────────────────── */
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: 12vh 20px 20px;
+  background: rgba(10, 10, 12, 0.42);
+  backdrop-filter: blur(6px);
+  animation: fade var(--speed) ease-out;
+}
+.palette {
+  width: min(620px, 96vw);
+  max-height: 66vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+  animation: rise 200ms var(--ease);
+}
+.palette-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-3);
+  flex: none;
+}
+.palette-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.palette-search input:focus { box-shadow: none; border-color: transparent; }
+
+.palette-list { flex: 1; overflow-y: auto; padding: 6px; min-height: 0; }
+.palette-group {
+  padding: 9px 10px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.palette-item.active { background: var(--accent-soft); color: var(--accent); }
+.palette-icon { display: grid; place-items: center; width: 18px; flex: none; }
+.palette-hint {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  flex: none;
+}
+.palette-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  flex: none;
+}
+.palette-foot .kbd { margin-right: 3px; }
+
+/* ── Settings: overview card and credits ────────────────────────────────── */
+
+.overview-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  color: inherit;
+  text-decoration: none;
+  transition: transform var(--t-fast) var(--ease-micro), border-color var(--t-fast),
+              background var(--t-fast);
+}
+.overview-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-line);
+  background: var(--surface);
+}
+.overview-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+.overview-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.overview-text strong { font-size: var(--fs-md); }
+.overview-text .muted { font-size: var(--fs-sm); line-height: 1.5; }
+.overview-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
+.overview-go { color: var(--text-3); flex: none; }
+
+.credit-links { display: grid; gap: 8px; }
+.credit-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+  font-size: var(--fs-sm);
+  transition: transform var(--t-fast) var(--ease-micro), border-color var(--t-fast);
+}
+.credit-link:hover { transform: translateX(2px); border-color: var(--line-strong); }
+.credit-link span { display: flex; flex-direction: column; min-width: 0; }
+.credit-link .mono { font-size: var(--fs-xs); }
+
+@media (prefers-reduced-motion: reduce) {
+  .preset:hover, .overview-card:hover, .credit-link:hover, .rail-brand:hover { transform: none; }
+  .chevron, .meter-fill { transition: none; }
+  .palette, .preset-menu, .menu, .popover { animation: none; }
+}
