@@ -14,9 +14,27 @@
           var dark = saved === 'dark' || (saved === 'system' &&
             window.matchMedia('(prefers-color-scheme: dark)').matches);
           document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+          document.documentElement.dataset.accent =
+            localStorage.getItem('shree.accent') || 'ember';
         } catch (e) {
           document.documentElement.dataset.theme = 'dark';
+          document.documentElement.dataset.accent = 'ember';
         }
+      })();
+
+      // First-time visit: redirect to landing page until user has saved / opened app
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          if (params.has('app') || window.location.hash.includes('app')) {
+            localStorage.setItem('shree.saved', 'true');
+            return;
+          }
+          var isSaved = localStorage.getItem('shree.saved') === 'true';
+          if (!isSaved && (window.location.pathname === '/' || window.location.pathname === '/index.html')) {
+            window.location.replace('/landing.html');
+          }
+        } catch (e) {}
       })();
     </script>
   </head>

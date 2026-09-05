@@ -40,9 +40,12 @@ def bundle_is_stale() -> bool:
     if not index.exists():
         return True
     built_at = index.stat().st_mtime
-    for path in (FRONTEND / "src").rglob("*"):
-        if path.is_file() and path.stat().st_mtime > built_at:
-            return True
+    # public/ is copied into the bundle verbatim (the landing page lives there),
+    # so a change under it is just as stale-making as one under src/.
+    for root in ((FRONTEND / "src"), (FRONTEND / "public")):
+        for path in root.rglob("*"):
+            if path.is_file() and path.stat().st_mtime > built_at:
+                return True
     return (FRONTEND / "index.html").stat().st_mtime > built_at
 
 
@@ -104,6 +107,7 @@ def main() -> None:
     print("=" * 62)
     print("  URA-Shree")
     print(f"  Interface   {ui_url}")
+    print(f"  Overview    {ui_url}/landing.html")
     print(f"  API         http://{args.host}:{args.port}/api/status")
     print(f"  Workspace   {workspace}")
     print("=" * 62)
