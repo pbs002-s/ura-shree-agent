@@ -1690,3 +1690,71 @@ input:checked + .slider:before {
   .rise-in { animation: none; }
 }
 
+/* ══ Modernisation layer ═════════════════════════════════════════════════ */
+/*
+  Everything below refines the shell that the blocks above define. It is kept
+  in one place so the original instrument-panel rules stay readable and the
+  polish can be read (or reverted) as a unit.
+*/
+
+:root {
+  /* Aliases for names a few components already reached for. */
+  --t-fast: 130ms;
+  --shadow-sm: var(--shadow-1);
+  --r-pill: 999px;
+  --text-1: var(--text);
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-micro: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Hairlines that composite over whatever sits behind a glass surface. */
+  --hairline: rgba(17, 17, 19, 0.09);
+  --glass: color-mix(in srgb, var(--surface) 80%, transparent);
+  --glass-sunk: color-mix(in srgb, var(--bg-sunk) 82%, transparent);
+}
+
+:root[data-theme='dark'] {
+  --line:        rgba(244, 244, 243, 0.10);
+  --line-strong: rgba(244, 244, 243, 0.20);
+  --hairline:    rgba(255, 255, 255, 0.08);
+  --glass: color-mix(in srgb, var(--surface) 72%, transparent);
+  --glass-sunk: color-mix(in srgb, var(--bg-sunk) 76%, transparent);
+}
+
+/* ── Glass surfaces ─────────────────────────────────────────────────────── */
+
+.header {
+  background: var(--surface);
+  background: var(--glass);
+  backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom-color: var(--hairline);
+  z-index: 12;
+}
+
+.rail {
+  background: var(--bg-sunk);
+  background: var(--glass-sunk);
+  backdrop-filter: blur(12px);
+  border-right-color: var(--hairline);
+}
+
+.rail-brand {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 9px;
+  background: transparent;
+  margin-bottom: 10px;
+  flex: none;
+  transition: transform var(--t-fast) var(--ease-micro), background var(--t-fast);
+}
+.rail-brand:hover { background: var(--surface-3); transform: translateY(-1px); }
+.rail-brand:active { transform: scale(0.94); }
+
+.rail-btn { transition: color var(--t-fast), background var(--t-fast), transform var(--t-fast) var(--ease-micro); }
+.rail-btn:active { transform: scale(0.94); }
+
+.pane-side, .pane-dock { border-color: var(--hairline); }
+
