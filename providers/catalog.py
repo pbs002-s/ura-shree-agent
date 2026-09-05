@@ -80,7 +80,7 @@ PROVIDERS: Dict[str, ProviderSpec] = {
         docs_url="https://ai.google.dev/docs",
         key_url="https://aistudio.google.com/apikey",
         key_prefix="AIza",
-        fallback_models=["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+        fallback_models=["gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"],
     ),
     "groq": ProviderSpec(
         id="groq",
