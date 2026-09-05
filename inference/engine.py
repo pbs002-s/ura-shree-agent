@@ -97,7 +97,10 @@ class InferenceEngine:
         except (TypeError, RuntimeError):
             raw = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
-        self.model_config = ModelConfig.from_dict(raw.get("config", {}).get("model", {}))
+        cfg_dict = raw.get("config", {})
+        if isinstance(cfg_dict, dict) and "model" in cfg_dict and isinstance(cfg_dict["model"], dict):
+            cfg_dict = cfg_dict["model"]
+        self.model_config = ModelConfig.from_dict(cfg_dict)
         # Dropout is a training-time regulariser; leaving it on at inference
         # only adds noise and a kernel launch per layer.
         self.model_config.dropout = 0.0
