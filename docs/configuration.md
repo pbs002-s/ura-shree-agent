@@ -76,3 +76,13 @@ This is not a sandbox. The shell runs with your permissions, and a model that
 is allowed to run commands is allowed to run *commands*. Point `--workspace`
 at what you intend the agent to touch, and leave approval on for anything you
 have not read.
+
+## Model Presets & Hardware Sizing
+
+`configs/` contains pre-tuned configurations for training and local inference:
+
+| Config | Architecture | Parameters | Context | Recommended Hardware |
+| :--- | :--- | ---: | ---: | :--- |
+| `configs/small.yaml` | 6 layers, 384 dim | 11.3M | 1,024 | Any CPU or Entry GPU (<1 GB VRAM) |
+| `configs/medium.yaml` | 12 layers, 768 dim | **78.7M** | **2,048** | Consumer GPUs (RTX 4060 8GB, ~2.5 GB VRAM) |
+| `configs/large.yaml` | 24 layers, 1024 dim | ~283M | 2,048 | 8GB - 16GB Dedicated VRAM with BF16 |

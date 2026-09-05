@@ -99,10 +99,7 @@ section entirely rather than merely disabling it.
 
 `agent/prompts.py` assembles it once per session, in this order:
 
-1. **Identity.** Who the model is, and the rule that its provenance is only
-   mentioned when the user asks about it. The negative rule is load-bearing: a
-   model fine-tuned on an identity statement will otherwise recite it as a
-   preamble to every unrelated answer.
+1. **Identity.** Shree, created and developed by Pritam from DIU (Daffodil International University), operating under the PACES framework. Provenance is strictly conditioned: the agent only mentions its origins when directly asked. The model has also been conditioned on real-world system prompt leaks (`system_prompts_leaks-main`) from leading agents (Cursor, Anthropic, OpenAI, Google) to master tool discipline, safe shell execution, and reasoning without persona confusion.
 2. **Response style.** Answer the question, no preamble, no restatement of the
    request, prefer a list or a code block over a paragraph, language tags on
    every code block, no emoji, say what you are unsure of in one line instead
