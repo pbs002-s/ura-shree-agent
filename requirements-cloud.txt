@@ -1,0 +1,33 @@
+# Extras for a hosted, multi-tenant deployment.
+#
+# None of these are needed to run URA-Shree on your own machine: install
+# requirements.txt alone and the server starts in local mode, with host
+# execution, no login and no database. Everything below is what turns that into
+# a service other people can log into.
+#
+#   pip install -r requirements.txt -r requirements-cloud.txt
+
+# -- persistence --------------------------------------------------------------
+sqlmodel>=0.0.22
+SQLAlchemy>=2.0.30
+# Postgres driver. psycopg 3 is the maintained one; the binary build avoids
+# needing libpq headers on the build host.
+psycopg[binary]>=3.1.18
+alembic>=1.13.0
+
+# -- object storage -----------------------------------------------------------
+# S3, MinIO, R2 and anything else that speaks the same API.
+boto3>=1.34.0
+
+# -- queue and rate limiting --------------------------------------------------
+redis>=5.0.0
+celery>=5.4.0
+
+# -- observability ------------------------------------------------------------
+structlog>=24.1.0
+opentelemetry-sdk>=1.24.0
+opentelemetry-exporter-otlp-proto-http>=1.24.0
+opentelemetry-instrumentation-fastapi>=0.45b0
+
+# -- serving ------------------------------------------------------------------
+gunicorn>=22.0.0
