@@ -41,13 +41,19 @@ class CodingAgent:
         max_turns: int = 24,
         event_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         session_id: str = "agent",
+        driver=None,
+        audit_context: Optional[Dict[str, str]] = None,
     ):
         self.workspace_root = Path(workspace_root or Path.cwd()).resolve()
         self.session_id = session_id
         self.event_callback = event_callback
         self.max_turns = max_turns
 
-        self.fs = FileSystemTool(str(self.workspace_root))
+        # An execution driver, when given, is where every command and file
+        # operation goes. Without one the agent behaves as it always has and
+        # acts directly on the host.
+        self.driver = driver
+        self.fs = driver.filesystem if driver is not None else FileSystemTool(str(self.workspace_root))
         self.git = GitTool(str(self.workspace_root))
         self.shells = shell_manager or ShellManager(str(self.workspace_root))
         self.indexer = CodebaseIndexer(str(self.workspace_root))
@@ -67,6 +73,8 @@ class CodingAgent:
             git=self.git,
             time_machine=self.time_machine,
             shell_session_id=session_id,
+            driver=driver,
+            audit_context=audit_context,
         )
 
         self._session: Optional[AgentSession] = None
