@@ -1,0 +1,169 @@
+# URA-Shree, deployed.
+#
+#   cp .env.example .env      # set SHREE_JWT_SECRET and the passwords
+#   docker compose build
+#   docker compose up -d
+#
+# The sandbox image has to exist before the first agent command runs:
+#   docker build -f deploy/sandbox.Dockerfile -t shree-sandbox:latest .
+#
+# SECURITY, read before deploying: the API creates sandbox containers, so it
+# needs a Docker endpoint. It is given a filtered socket proxy rather than
+# /var/run/docker.sock, because handing a network-facing service the raw
+# socket is handing it root on the host - `docker run -v /:/host` from inside
+# that container is game over, and no application-level check prevents it. The
+# proxy below allows only the container calls the driver actually makes.
+#
+# Even so, the containers it starts share the host kernel. For untrusted code
+# from the public internet, put the sandboxes on their own hosts and use a
+# hypervisor-isolated runtime (Firecracker via firecracker-containerd, gVisor,
+# or a hosted microVM service) rather than runc.
+
+name: shree
+
+services:
+  api:
+    build:
+      context: .
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      SHREE_MODE: cloud
+      SHREE_DATABASE_URL: postgresql+psycopg://shree:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/shree
+      SHREE_REDIS_URL: redis://redis:6379/0
+      SHREE_WORKSPACES_ROOT: /var/lib/shree/workspaces
+      SHREE_EXECUTION_DRIVER: container
+      SHREE_SANDBOX_IMAGE: shree-sandbox:latest
+      SHREE_TRUST_PROXY: "1"
+      DOCKER_HOST: tcp://docker-proxy:2375
+    volumes:
+      - workspaces:/var/lib/shree/workspaces
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      docker-proxy: {condition: service_started}
+    networks: [edge, internal]
+    # The API itself is never published: nginx is the only way in.
+    expose: ["8000"]
+    deploy:
+      resources:
+        limits: {cpus: "4.0", memory: 8G}
+
+  worker:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      SHREE_MODE: cloud
+      SHREE_DATABASE_URL: postgresql+psycopg://shree:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/shree
+      SHREE_REDIS_URL: redis://redis:6379/0
+      SHREE_WORKSPACES_ROOT: /var/lib/shree/workspaces
+    # Indexing and pruning are IO-bound and hold the GIL in bursts; a handful of
+    # processes beats a large thread pool here.
+    command: ["celery", "-A", "server.tasks", "worker", "--loglevel=info", "--concurrency=4"]
+    volumes:
+      - workspaces:/var/lib/shree/workspaces
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [internal]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Put fullchain.pem and privkey.pem here, or point this at a certbot
+      # volume. Without them nginx serves plain HTTP on :80 only.
+      - ./deploy/certs:/etc/nginx/certs:ro
+    depends_on: [api]
+    networks: [edge]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shree
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: shree
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shree -d shree"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Persistence matters here: Redis holds the job queue, and losing it loses
+    # every accepted-but-unstarted job.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [internal]
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-shreeadmin}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY}
+    volumes: [miniodata:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  docker-proxy:
+    # Allows exactly the calls ContainerDriver makes and refuses the rest, so a
+    # compromised API cannot rewrite the host through the daemon.
+    image: tecnativa/docker-socket-proxy:0.2
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      EXEC: 1
+      IMAGES: 1
+      INFO: 1
+      # Everything the driver has no use for stays off.
+      VOLUMES: 0
+      NETWORKS: 0
+      SERVICES: 0
+      SWARM: 0
+      SYSTEM: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      CONFIGS: 0
+      BUILD: 0
+      COMMIT: 0
+      DISTRIBUTION: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [internal]
+
+volumes:
+  workspaces:
+  pgdata:
+  redisdata:
+  miniodata:
+
+networks:
+  # Only nginx and the API sit on the edge network; the datastores are not
+  # reachable from it at all.
+  edge:
+  internal:
+    internal: true
