@@ -26,6 +26,23 @@ from agent.toolkit import MUTATING_TOOLS, Toolkit
 MAX_TOOL_RESULT_CHARS = 12_000
 
 
+def _record_completion_latency(**fields: Any) -> None:
+    """
+    Emits one measurement per model completion.
+
+    Where the tokens come from is the single largest and most variable cost in
+    a turn, so it gets its own span rather than being buried inside the turn's.
+    Wrapped because observability is optional: a local install without the
+    cloud extras still runs the loop.
+    """
+    try:
+        from server.observability import get_logger
+
+        get_logger("llm").info("completion", **fields)
+    except Exception:
+        pass
+
+
 class AgentSession:
     """
     A conversation with tools attached, bound to one workspace.
@@ -113,6 +130,8 @@ class AgentSession:
             assistant_text: List[str] = []
             calls: List[ToolCall] = []
             stop_reason = "end_turn"
+            completion_started = time.perf_counter()
+            first_token_ms = 0.0
 
             try:
                 async for event in provider.stream(
@@ -123,6 +142,11 @@ class AgentSession:
                     temperature=temperature,
                     max_tokens=max_tokens,
                 ):
+                    if not first_token_ms:
+                        # Time to first token, not total latency: it is what the
+                        # user actually waits for, and the only half of the
+                        # number a slow provider and a long answer distinguish.
+                        first_token_ms = (time.perf_counter() - completion_started) * 1000
                     if event.type == "text":
                         assistant_text.append(event.text)
                         yield {"type": "text", "text": event.text}
@@ -135,6 +159,14 @@ class AgentSession:
                         yield {"type": "usage", "usage": event.usage}
                     elif event.type == "done":
                         stop_reason = event.stop_reason or stop_reason
+                _record_completion_latency(
+                    model=model,
+                    turn=turn,
+                    first_token_ms=first_token_ms,
+                    total_ms=(time.perf_counter() - completion_started) * 1000,
+                    stop_reason=stop_reason,
+                    tool_calls=len(calls),
+                )
             except ProviderError as err:
                 yield {"type": "error", "message": str(err), "status": getattr(err, "status", 0)}
                 return
@@ -223,17 +255,22 @@ class AgentSession:
                         approved = False
 
                 if not approved:
+                    if self.toolkit:
+                        self.toolkit.record_denied(call.name, call.arguments)
                     result = {
                         "ok": False,
                         "text": "Refused: The user declined permission to save or modify this file.",
                         "data": {},
                     }
                 else:
+                    # Who let this run is the fact an audit reader needs: a
+                    # policy that auto-approved it, or a person who clicked.
+                    approved_by = "user" if needs_approval else "auto_approve_policy"
                     # Tools are blocking (subprocesses, disk IO). Running them on
                     # the loop thread would stall every other websocket.
                     if self.toolkit:
                         result = await asyncio.to_thread(
-                            self.toolkit.execute, call.name, call.arguments
+                            self.toolkit.execute, call.name, call.arguments, approved_by
                         )
                     else:
                         result = {"ok": False, "text": "No toolkit available in general mode.", "data": {}}
