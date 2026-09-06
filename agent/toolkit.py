@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -182,17 +183,23 @@ class Toolkit:
     def __init__(
         self,
         workspace_root: str,
-        filesystem,
-        shell_manager,
+        filesystem=None,
+        shell_manager=None,
         indexer=None,
         memory=None,
         git=None,
         time_machine=None,
         shell_session_id: str = "agent",
         on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        driver=None,
+        audit_context: Optional[Dict[str, str]] = None,
     ):
         self.workspace_root = Path(workspace_root).resolve()
-        self.fs = filesystem
+        # A driver decides where the work lands - the host, or this session's
+        # sandbox. When one is supplied it owns both halves, so the filesystem
+        # comes from it too and nothing can quietly run on the wrong machine.
+        self.driver = driver
+        self.fs = filesystem if driver is None else driver.filesystem
         self.shells = shell_manager
         self.indexer = indexer
         self.memory = memory
@@ -200,6 +207,8 @@ class Toolkit:
         self.time_machine = time_machine
         self.shell_session_id = shell_session_id
         self.on_event = on_event
+        # Identity carried into every audit row written from here.
+        self.audit_context = dict(audit_context or {})
 
     def specs(self) -> List[ToolSpec]:
         available = []
@@ -217,16 +226,67 @@ class Toolkit:
 
     # -- execution ----------------------------------------------------------
 
-    def execute(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def _audit(
+        self,
+        name: str,
+        arguments: Dict[str, Any],
+        status: str,
+        approved_by: str,
+        exit_code: Optional[int] = None,
+        duration_ms: int = 0,
+    ) -> None:
+        """
+        Records the invocation.
+
+        Wrapped because the audit trail is a side channel: if it breaks, the
+        tool call still has to complete and report honestly.
+        """
+        try:
+            from server.db import record_tool_invocation
+
+            record_tool_invocation(
+                tool_name=name,
+                arguments=arguments,
+                status=status,
+                approved_by=approved_by,
+                exit_code=exit_code,
+                duration_ms=duration_ms,
+                **self.audit_context,
+            )
+        except Exception:
+            pass
+
+    def _mirror(self, snapshot: Dict[str, Any]) -> None:
+        """Copies a snapshot's metadata into the shared timeline index."""
+        project_id = self.audit_context.get("project_id", "")
+        if not project_id:
+            return
+        try:
+            from server.sessions import mirror_snapshot
+
+            mirror_snapshot(project_id, snapshot)
+        except Exception:
+            pass
+
+    def record_denied(self, name: str, arguments: Dict[str, Any]) -> None:
+        """Logs a tool call the user refused. A denial is evidence too."""
+        self._audit(name, arguments, status="denied", approved_by="")
+
+    def execute(
+        self, name: str, arguments: Dict[str, Any], approved_by: str = "auto"
+    ) -> Dict[str, Any]:
         """
         Runs one tool and returns `{"ok": bool, "text": str, "data": dict}`.
 
         `text` is what goes back to the model; `data` is the structured result
-        the UI renders.
+        the UI renders. Every outcome, including a rejected call, lands in the
+        audit log before this returns.
         """
+        started = time.perf_counter()
         handler = getattr(self, f"_tool_{name}", None)
         if handler is None:
             known = ", ".join(spec.name for spec in self.specs())
+            self._audit(name, arguments, status="unknown_tool", approved_by=approved_by)
             return {"ok": False, "text": f"No such tool '{name}'. Available: {known}", "data": {}}
 
         snapshot_id = None
@@ -234,21 +294,37 @@ class Toolkit:
             try:
                 snap = self.time_machine.snapshot(f"Before {name}", kind="auto")
                 snapshot_id = snap["id"]
+                self._mirror(snap)
             except Exception:
                 # A failure to snapshot must not block the edit itself.
                 snapshot_id = None
 
+        def elapsed() -> int:
+            return int((time.perf_counter() - started) * 1000)
+
         try:
             result = handler(**arguments)
         except TypeError as err:
+            self._audit(name, arguments, "bad_arguments", approved_by, duration_ms=elapsed())
             return {"ok": False, "text": f"Bad arguments for {name}: {err}", "data": {}}
         except PermissionError as err:
+            self._audit(name, arguments, "refused", approved_by, duration_ms=elapsed())
             return {"ok": False, "text": f"Refused: {err}", "data": {}}
         except Exception as err:
+            self._audit(name, arguments, "error", approved_by, duration_ms=elapsed())
             return {"ok": False, "text": f"{name} failed: {err}", "data": {}}
 
         if snapshot_id:
             result.setdefault("data", {})["snapshot_before"] = snapshot_id
+
+        self._audit(
+            name,
+            arguments,
+            status="ok" if result.get("ok") else "failed",
+            approved_by=approved_by,
+            exit_code=result.get("data", {}).get("returncode"),
+            duration_ms=elapsed(),
+        )
         return result
 
     # -- individual tools ---------------------------------------------------
@@ -319,8 +395,10 @@ class Toolkit:
         return {"ok": True, "text": text, "data": result}
 
     def _tool_run_command(self, command: str, timeout: int = 120) -> Dict[str, Any]:
-        session = self.shells.get(self.shell_session_id)
-        result = session.run(command, timeout=float(timeout))
+        if self.driver is not None:
+            result = self.driver.run(command, timeout=float(timeout))
+        else:
+            result = self.shells.get(self.shell_session_id).run(command, timeout=float(timeout))
 
         status = "exit 0" if result["success"] else f"exit {result['returncode']}"
         output = result["output"] or "(no output)"
@@ -364,6 +442,7 @@ class Toolkit:
 
     def _tool_snapshot(self, label: str) -> Dict[str, Any]:
         snap = self.time_machine.snapshot(label, kind="agent")
+        self._mirror(snap)
         return {
             "ok": True,
             "text": f"Snapshot {snap['id']} saved ({snap['file_count']} files).",

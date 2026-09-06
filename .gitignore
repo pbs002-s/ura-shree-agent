@@ -71,3 +71,13 @@ blobs/
 .timemachine/
 # The agent's default working directory. Scratch space, never source.
 workspace/
+# Per-tenant workspace volumes. One directory per user per project, holding
+# their files and snapshot history.
+workspaces/
+
+# Deployment configuration and secrets. Only the example is committed.
+.env
+.env.*
+!.env.example
+# TLS material for the reverse proxy.
+deploy/certs/

@@ -33,7 +33,7 @@ def client(tmp_path_factory):
         test_client.workspace = root  # type: ignore[attr-defined]
         yield test_client
 
-    api.shells.close_all()
+    api.session_manager.close_all()
     os.environ.pop("SHREE_WORKSPACE", None)
 
 

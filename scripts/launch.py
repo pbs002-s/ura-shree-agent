@@ -78,7 +78,16 @@ def main() -> None:
     parser.add_argument("--no-build", action="store_true", help="Serve the existing bundle as-is")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser")
     parser.add_argument("--reload", action="store_true", help="Reload the API on Python changes")
+    parser.add_argument("--driver", choices=["local", "container"], default=None,
+                        help="Execution driver: 'local' (default) on host, or 'container' in Docker sandbox")
+    parser.add_argument("--mode", choices=["local", "cloud"], default=None,
+                        help="Operating mode: 'local' (default) or 'cloud' (multi-tenant)")
     args = parser.parse_args()
+
+    if args.driver:
+        os.environ["SHREE_EXECUTION_DRIVER"] = args.driver
+    if args.mode:
+        os.environ["SHREE_MODE"] = args.mode
 
     if args.workspace:
         workspace = Path(args.workspace).resolve()

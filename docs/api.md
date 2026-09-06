@@ -6,11 +6,89 @@ the built frontend served as static files.
 
 Interactive documentation is at `/docs` while the server is running.
 
+## Authentication and scope
+
+Every route except the ones listed below is refused without credentials. That
+is enforced by middleware rather than per route, so a route added later is
+protected whether or not its author remembered to say so.
+
+Public: `/api/health`, `/api/status`, everything under `/api/auth/`, `/docs`,
+`/openapi.json`, and the static frontend.
+
+| Header | Meaning |
+| :--- | :--- |
+| `Authorization: Bearer <token>` | The access token. Required in cloud mode |
+| `X-Project-Id: <id>` | Which project the call is about. Required in cloud mode, optional locally |
+| `X-Request-Id: <id>` | Optional. Reused as the correlation id, and echoed back on every response |
+
+WebSockets cannot set headers on the handshake, so they take `?token=` and
+`?project=` instead. A socket is authenticated *before* it is accepted and
+closed with code 1008 otherwise.
+
+In local mode with no `SHREE_API_KEY` set, every request resolves to a single
+synthetic administrator and none of the above is needed.
+
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/api/health` | Liveness for a load balancer. Cheap, unauthenticated, no database |
+| `GET` | `/api/auth/providers` | Which sign-in methods this deployment has configured |
+| `POST` | `/api/auth/register` | Create an account. The first one becomes the administrator |
+| `POST` | `/api/auth/login` | Exchange a password for an access and refresh token |
+| `POST` | `/api/auth/refresh` | Trade a refresh token for a fresh access token |
+| `GET` | `/api/auth/me` | The caller, their role, and the server's mode |
+| `GET` | `/api/auth/oauth/{provider}/start` | Begin a GitHub or Google login |
+| `GET` | `/api/auth/oauth/{provider}/callback` | Complete it; redirects with the token in the URL fragment |
+
+A missing account and a wrong password return the same message, and the hash is
+verified either way, so neither the response text nor its timing says whether
+an address is registered.
+
+## Projects
+
+A project is a tenant's workspace: one persistent volume, one execution
+sandbox, one timeline. Access is by membership, and a caller who is not a
+member gets 404 rather than 403 - confirming that an id exists is itself a
+leak.
+
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/api/projects` | Every project the caller can open, with their role in each |
+| `POST` | `/api/projects` | Create one. The caller becomes its owner |
+| `POST` | `/api/projects/{id}/members` | Add or re-role a member. Owner only |
+| `DELETE` | `/api/projects/{id}/members/{user_id}` | Remove a member and close their live session |
+
+Roles are ordered: `viewer` reads, `member` writes, `owner` manages membership.
+
+## Administration
+
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/api/admin/sessions` | Every live session, with its sandbox limits and idle time |
+| `DELETE` | `/api/admin/sessions/{user_id}/{project_id}` | Destroy one session and its sandbox |
+| `GET` | `/api/admin/audit` | The tool invocation trail, newest first, filterable by user, project or tool |
+| `GET` | `/api/admin/audit/verify` | Walk the audit hash chain and name the first broken link |
+| `GET` | `/api/jobs/{task_id}` | Where a queued background job has got to |
+
+Administrator role required for everything under `/api/admin`.
+
+## Rate limits
+
+A caller over budget gets `429` with a `Retry-After` header. Buckets refill
+continuously rather than resetting on a boundary, so a window cannot be banked
+and spent in one burst.
+
+| Bucket | Applies to | Default |
+| :--- | :--- | :--- |
+| `api` | general REST | 600/60 |
+| `scan` | `/api/providers/scan`, register, login | 10/60 |
+| `chat` | agent turns | 60/60 |
+| `ws` | WebSocket frames, checked before the frame is acted on | 120/60 |
+
 ## Status and settings
 
 | Method | Path | Purpose |
 | :--- | :--- | :--- |
-| `GET` | `/api/status` | Version, workspace, platform, active model, host and GPU memory, Time Machine head and store size |
+| `GET` | `/api/status` | Version, mode, workspace, platform, active model, host and GPU memory, Time Machine head and store size, and the health of the database, job broker, rate limiter and tracing |
 | `GET` | `/api/settings` | Full settings, with keys masked |
 | `POST` | `/api/settings` | Patch settings |
 
@@ -33,18 +111,26 @@ Keys are returned only as a masked preview, never in full.
 | Method | Path | Purpose |
 | :--- | :--- | :--- |
 | `GET` | `/api/workspace/current` | The open workspace, or `null` |
-| `POST` | `/api/workspace/select` | Bind a new root; an empty path unbinds and enters general chat mode |
+| `POST` | `/api/workspace/select` | Bind a new root. **Local mode only**: refused with 403 in cloud mode |
 | `POST` | `/api/workspace/browse` | Open the platform's folder dialog and bind what is chosen |
 | `POST` | `/api/browse-directory` | Open the folder dialog and return the path without binding it |
 | `GET` | `/api/workspace/suggestions` | Default workspace, project root, Desktop, Documents, Downloads |
 
-`select` rebuilds the filesystem tool, git tool, shell manager, indexer and
-Time Machine against the new root and clears the cached agents. A path that
-does not exist is created; a path that exists and is not a directory is a 400.
+`select` rebinds the single-user root and closes every live session, so the
+next request rebuilds against the new folder. A path that does not exist is
+created; a path that exists and is not a directory is a 400.
+
+It is refused outright in cloud mode. An endpoint that takes an absolute host
+path and starts serving its contents is a filesystem read primitive for anyone
+who can call it; multi-tenant deployments select a project instead, and a
+project only ever names a directory under the workspaces root.
 
 Both browse endpoints run the dialog in a subprocess (`scripts/pick_folder.py`)
 and are cancellable - a cancelled dialog returns `{"ok": false,
-"cancelled": true}` and changes nothing.
+"cancelled": true}` and changes nothing. They draw a window on the machine
+running the server, which on a server is either nothing or a request that hangs
+for two minutes holding a worker, so they are disabled unless
+`SHREE_ALLOW_HOST_PICKER=1` is set on a local install.
 
 ## Files
 

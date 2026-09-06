@@ -2226,3 +2226,48 @@ input:checked + .slider:before {
   .chevron, .meter-fill { transition: none; }
   .palette, .preset-menu, .menu, .popover { animation: none; }
 }
+
+/* -- session, error boundary and loading skeletons ------------------------- */
+
+.error-boundary {
+  max-width: 520px;
+  margin: 64px auto;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  text-align: center;
+}
+.error-boundary-title { font-size: var(--fs-md); font-weight: 600; margin-bottom: 8px; }
+.error-boundary-message {
+  font-size: var(--fs-sm);
+  color: var(--danger);
+  margin-bottom: 10px;
+  word-break: break-word;
+}
+.error-boundary-actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+
+.signin-dialog { width: min(400px, 100%); }
+.signin-body { padding: 18px; }
+.signin-note { margin-bottom: 14px; }
+.signin-error { font-size: var(--fs-sm); color: var(--danger); margin-bottom: 10px; }
+.signin-submit { width: 100%; }
+.signin-oauth { display: grid; gap: 8px; margin-top: 14px; }
+
+.skeleton-group { display: grid; gap: 8px; padding: 8px 0; }
+.skeleton-line {
+  height: 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  /* A slow sweep reads as "still working"; a fast one reads as a glitch. */
+  background-image: linear-gradient(90deg, transparent, var(--surface-2), transparent);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line { animation: none; }
+}

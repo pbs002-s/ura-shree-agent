@@ -9,7 +9,7 @@ it creates a sibling line, so exploring an alternative approach never costs you
 the one you already had.
 
 Storage is content-addressed. A snapshot records `path -> sha256`, and each
-distinct blob is written once under `objects/`, zlib-compressed. Snapshotting a
+distinct blob is written once into the object store, compressed. Snapshotting a
 1000-file project where one file changed writes exactly one new blob, so
 snapshots stay cheap enough to take on every single write.
 
@@ -27,7 +27,6 @@ import sqlite3
 import threading
 import time
 import uuid
-import zlib
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -79,11 +78,22 @@ class TimeMachine:
         workspace_root: str,
         store_dir: Optional[str] = None,
         extra_ignores: Optional[Iterable[str]] = None,
+        object_store: Optional[Any] = None,
     ):
         self.workspace_root = Path(workspace_root).resolve()
         self.store_dir = Path(store_dir or (self.workspace_root / ".timemachine")).resolve()
         self.objects_dir = self.store_dir / "objects"
         self.objects_dir.mkdir(parents=True, exist_ok=True)
+
+        # Blobs are immutable and named by their own digest, so where they live
+        # is a deployment choice rather than a correctness one. A single
+        # machine keeps them next to the workspace; a multi-replica deployment
+        # passes an object store so any replica can read a blob another wrote.
+        if object_store is None:
+            from server.storage import LocalObjectStore
+
+            object_store = LocalObjectStore(str(self.objects_dir))
+        self.objects = object_store
 
         self.ignores = set(DEFAULT_IGNORES)
         if extra_ignores:
@@ -104,28 +114,11 @@ class TimeMachine:
 
     # -- object store -------------------------------------------------------
 
-    def _object_path(self, digest: str) -> Path:
-        return self.objects_dir / digest[:2] / digest
-
     def _store_blob(self, digest: str, data: bytes) -> None:
-        path = self._object_path(digest)
-        if path.exists():
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # Write to a temp name and rename, so a crash cannot leave a truncated
-        # object that would later be trusted as valid content.
-        tmp = path.with_suffix(".tmp")
-        tmp.write_bytes(zlib.compress(data, 6))
-        tmp.replace(path)
+        self.objects.put(digest, data)
 
     def _load_blob(self, digest: str) -> Optional[bytes]:
-        path = self._object_path(digest)
-        if not path.exists():
-            return None
-        try:
-            return zlib.decompress(path.read_bytes())
-        except zlib.error:
-            return None
+        return self.objects.get(digest)
 
     # -- scanning -----------------------------------------------------------
 
@@ -258,7 +251,7 @@ class TimeMachine:
         }
 
     def store_size(self) -> int:
-        return sum(p.stat().st_size for p in self.objects_dir.rglob("*") if p.is_file())
+        return self.objects.total_bytes()
 
     # -- diffing ------------------------------------------------------------
 
@@ -439,10 +432,11 @@ class TimeMachine:
                 live.update(json.loads(row["tree_json"]).values())
 
             freed = 0
-            for obj in self.objects_dir.rglob("*"):
-                if obj.is_file() and obj.name not in live:
-                    freed += obj.stat().st_size
-                    obj.unlink()
+            before = self.objects.total_bytes()
+            for digest in list(self.objects.keys()):
+                if digest not in live:
+                    self.objects.delete(digest)
+            freed = max(0, before - self.objects.total_bytes())
 
             self.head = self._latest_id()
 

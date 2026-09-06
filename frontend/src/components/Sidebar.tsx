@@ -5,6 +5,7 @@ import {
   IconFolderPlus, IconPlus, IconRefresh, IconRestore, IconSearch, IconTrash,
 } from '../lib/icons'
 import type { Snapshot, TreeNode } from '../types'
+import { Skeleton, SkeletonTree } from './Session'
 
 /* ── Files ──────────────────────────────────────────────────────────────── */
 
@@ -241,7 +242,9 @@ export function FilesPanel({
             </button>
           </div>
         ) : !tree ? (
-          <div className="empty">Loading the workspace…</div>
+          // A skeleton in the shape of a tree, rather than a line of text: the
+          // panel keeps its size, so nothing jumps when the data lands.
+          <div style={{ padding: '10px 12px' }}><SkeletonTree /></div>
         ) : matches ? (
           <div className="tree">
             {matches.length === 0 && <div className="empty">Nothing matches “{query}”.</div>}
@@ -323,6 +326,7 @@ export function TimelinePanel({
   const [storeBytes, setStoreBytes] = useState(0)
   const [selected, setSelected] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -333,6 +337,10 @@ export function TimelinePanel({
       setStoreBytes(data.store_bytes)
     } catch (err) {
       onNotify(`Could not load the timeline: ${(err as Error).message}`, 'danger')
+    } finally {
+      // Set on failure too: a permanent skeleton is worse than an empty list,
+      // because it promises content that is never coming.
+      setLoaded(true)
     }
   }, [onNotify])
 
@@ -403,7 +411,9 @@ export function TimelinePanel({
       </div>
 
       <div className="pane-body">
-        {nodes.length === 0 ? (
+        {!loaded ? (
+          <div style={{ padding: '10px 12px' }}><Skeleton lines={5} /></div>
+        ) : nodes.length === 0 ? (
           <div className="empty">
             <IconClock size={22} />
             No snapshots yet. One is taken automatically before every edit.

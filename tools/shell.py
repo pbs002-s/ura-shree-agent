@@ -43,6 +43,17 @@ BANNED_PATTERNS: List[str] = [
     r"\breboot\b",
     r"Stop-Computer",
     r"Restart-Computer",
+    r"\bdiskpart\b",
+    r"\bbcdedit\b",
+    r"vssadmin\s+delete\s+shadows",
+    r"wbadmin\s+delete",
+    r"chmod\s+(-R\s+)?777\s+/(?:\s|$)",
+    r"chown\s+(-R\s+)?.*\s+/(?:\s|$)",
+    r"(?:curl|wget)\s+[^\n|;]+?\|\s*(?:bash|sh|zsh)",
+    r"(?:Invoke-WebRequest|iwr)\s+[^\n|;]+?\|\s*(?:iex|Invoke-Expression)",
+    r"\bInvoke-Expression\b.*(?:DownloadString|DownloadData)",
+    r"\biex\b.*(?:DownloadString|DownloadData)",
+    r"powershell(?:\.exe)?\s+.*-(?:e|enc|encodedcommand)\s+[A-Za-z0-9+/=]{20,}",
 ]
 _BANNED = [re.compile(p, re.IGNORECASE) for p in BANNED_PATTERNS]
 
@@ -66,12 +77,29 @@ class ShellSession:
         workspace_root: str,
         session_id: Optional[str] = None,
         max_output_chars: int = 200_000,
+        argv: Optional[List[str]] = None,
+        host_cwd: Optional[str] = None,
+        posix: Optional[bool] = None,
+        env_overrides: Optional[Dict[str, str]] = None,
     ):
-        self.workspace_root = Path(workspace_root).resolve()
+        # `workspace_root` is the path the *shell* sees. For a sandboxed
+        # session that is a path inside the container, which is why the
+        # process working directory is passed separately as `host_cwd`.
+        self.workspace_root = Path(workspace_root)
+        if host_cwd is None:
+            self.workspace_root = self.workspace_root.resolve()
         self.session_id = session_id or uuid.uuid4().hex[:8]
         self.max_output_chars = max_output_chars
         self.created_at = time.time()
         self.cwd = str(self.workspace_root)
+
+        # An argv override means somebody else owns the shell (a container
+        # exec, for instance), so the sentinel syntax follows that shell's
+        # platform rather than the host's.
+        self._argv = list(argv) if argv else None
+        self._host_cwd = host_cwd
+        self.posix = (sys.platform != "win32") if posix is None else bool(posix)
+        self._env_overrides = dict(env_overrides or {})
 
         self._process: Optional[subprocess.Popen] = None
         self._output: "queue.Queue[Optional[str]]" = queue.Queue()
@@ -82,6 +110,8 @@ class ShellSession:
     # -- lifecycle ----------------------------------------------------------
 
     def _shell_argv(self) -> List[str]:
+        if self._argv:
+            return list(self._argv)
         if sys.platform == "win32":
             pwsh = shutil.which("pwsh") or shutil.which("powershell") or "powershell.exe"
             # "-Command -" reads a command stream from stdin and keeps running.
@@ -94,10 +124,11 @@ class ShellSession:
         env.setdefault("PYTHONIOENCODING", "utf-8")
         env["TERM"] = "dumb"          # no cursor escapes to strip out later
         env["NO_COLOR"] = "1"
+        env.update(self._env_overrides)
 
         self._process = subprocess.Popen(
             self._shell_argv(),
-            cwd=self.cwd,
+            cwd=self._host_cwd or self.cwd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             # Merging streams preserves the real interleaving of output, which
@@ -160,7 +191,7 @@ class ShellSession:
     def _wrap(self, command: str, marker: str) -> str:
         """Appends the sentinel echo that reports completion and exit status."""
         cmd_stripped = command.strip()
-        if sys.platform == "win32":
+        if not self.posix:
             if cmd_stripped == "claude":
                 command = "Start-Process claude ; Write-Output '[Ura-Shree] Launched Claude Code in an interactive console window.'"
             elif cmd_stripped == "aider":
@@ -289,6 +320,9 @@ class ShellSession:
                 "success": success and code == 0,
                 "duration_ms": int((time.perf_counter() - started) * 1000),
                 "cwd": self.cwd,
+                # The prompt line wants the short form; an execution driver
+                # collecting these events has no other way to compute it.
+                "relative_cwd": self.relative_cwd(),
                 "truncated": truncated,
             }
 
@@ -320,7 +354,7 @@ class ShellSession:
         if process is None or process.stdin is None:
             return
         marker = uuid.uuid4().hex[:12]
-        probe = "$PWD.Path" if sys.platform == "win32" else "pwd"
+        probe = "pwd" if self.posix else "$PWD.Path"
         try:
             process.stdin.write(self._wrap(probe, marker))
             process.stdin.flush()
@@ -342,14 +376,17 @@ class ShellSession:
             lines.append(line.strip())
 
         for candidate in reversed(lines):
-            if candidate and Path(candidate).is_dir():
+            # A sandboxed shell reports a path that only exists inside its own
+            # mount namespace, so the host cannot confirm it with is_dir().
+            if candidate and (self._host_cwd is not None or Path(candidate).is_dir()):
                 self.cwd = candidate
                 return
 
     def relative_cwd(self) -> str:
         """Current directory as a workspace-relative path, for the prompt line."""
         try:
-            rel = Path(self.cwd).resolve().relative_to(self.workspace_root)
+            here = Path(self.cwd) if self._host_cwd is not None else Path(self.cwd).resolve()
+            rel = here.relative_to(self.workspace_root)
             if str(rel) == ".":
                 return self.workspace_root.name
             return f"{self.workspace_root.name}/{str(rel).replace('\\', '/')}"
@@ -371,8 +408,16 @@ class ShellSession:
 class ShellManager:
     """Keeps one `ShellSession` per session id."""
 
-    def __init__(self, workspace_root: str):
+    def __init__(
+        self,
+        workspace_root: str,
+        session_factory: Optional[Callable[[str], ShellSession]] = None,
+    ):
+        # `session_factory` lets an execution driver decide how the shell is
+        # spawned - on the host, or inside that session's sandbox - without
+        # this class knowing which.
         self.workspace_root = workspace_root
+        self._factory = session_factory
         self._sessions: Dict[str, ShellSession] = {}
         self._lock = threading.Lock()
 
@@ -382,7 +427,10 @@ class ShellManager:
             if session is None or not session.alive:
                 if session is not None:
                     session.close()
-                session = ShellSession(self.workspace_root, session_id=session_id)
+                if self._factory is not None:
+                    session = self._factory(session_id)
+                else:
+                    session = ShellSession(self.workspace_root, session_id=session_id)
                 self._sessions[session_id] = session
             return session
 

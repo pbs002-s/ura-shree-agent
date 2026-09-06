@@ -1,0 +1,45 @@
+# Keep the build context small and free of anything secret.
+#
+# Everything sent to the daemon is copied into the build, and a layer that
+# contains a key still contains it after the next layer deletes it.
+
+.git
+.gitignore
+.venv
+venv
+env
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Credentials and local state
+.env
+.env.*
+!.env.example
+.shree
+.timemachine
+workspace
+workspaces
+blobs
+
+# Model artefacts: gigabytes, and mounted at runtime rather than baked in
+checkpoints/*.pt
+checkpoints/*.pth
+datasets
+dataset
+data/processed
+*.bin
+*.safetensors
+
+# Built by the web stage; a stale local copy would shadow it
+frontend/node_modules
+frontend/dist
+
+docs
+tests
+system_prompts_leaks-main
+README.md
+Modelfile

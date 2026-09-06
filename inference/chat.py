@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-_venv_python = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+_venv_python = PROJECT_ROOT / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
 if _venv_python.exists() and Path(sys.executable).resolve() != _venv_python.resolve():
     try:
         import torch  # noqa: F401

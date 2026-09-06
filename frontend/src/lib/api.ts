@@ -1,21 +1,41 @@
 /**
  * REST and WebSocket clients for the URA-Shree backend.
  *
+ * Two things this layer owns that no component should have to think about:
+ * where the API lives (same origin in development, `VITE_API_BASE_URL` when the
+ * frontend is served separately) and the credentials every call carries.
+ *
  * The socket wrapper exists because a bare WebSocket loses every message sent
  * before it opens and dies silently when the server restarts. This one queues
- * sends until the connection is up and reconnects with a backoff.
+ * sends until the connection is up and reconnects with a jittered backoff.
  */
 
 import type {
   AppSettings, ModelInfo, ProviderSpec, ProviderState,
   Snapshot, SnapshotDiff, Status, TreeNode,
 } from '../types'
+import { apiUrl, session, socketUrl } from './session'
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
+  const response = await fetch(apiUrl(path), {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...session.headers(),
+      ...(init?.headers ?? {}),
+    },
   })
+
+  if (response.status === 401) {
+    // One silent refresh, then give up and let the app show the expiry modal.
+    // Retrying past that turns an expired session into a redirect loop.
+    if (retry && (await session.refresh())) {
+      return request<T>(path, init, false)
+    }
+    session.expire()
+    throw new Error('Your session has expired. Sign in again to continue.')
+  }
+
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`
     try {
@@ -88,9 +108,33 @@ export const api = {
   restore: (snapshotId: string, dryRun = false) =>
     post<{ success: boolean; files_written: number; files_deleted: number; new_head: string }>(
       '/api/timemachine/restore', { snapshot_id: snapshotId, dry_run: dryRun }),
+
+  authProviders: () =>
+    request<{ password: boolean; oauth: string[]; mode: string }>('/api/auth/providers'),
+  login: (email: string, password: string) =>
+    post<{ access_token: string; refresh_token: string; role: string }>(
+      '/api/auth/login', { email, password }),
+  register: (email: string, password: string, displayName = '') =>
+    post<{ access_token: string; refresh_token: string; role: string }>(
+      '/api/auth/register', { email, password, display_name: displayName }),
+  me: () => request<{ id: string; email: string; role: string; mode: string; local: boolean }>(
+    '/api/auth/me'),
+  oauthStart: (provider: string) =>
+    request<{ url: string; state: string }>(`/api/auth/oauth/${provider}/start`),
+
+  projects: () =>
+    request<{ projects: { id: string; name: string; role: string }[] }>('/api/projects'),
+  createProject: (name: string) =>
+    post<{ id: string; name: string; role: string }>('/api/projects', { name }),
+
+  job: (taskId: string) =>
+    request<{ task_id: string; state: string; result?: unknown; error?: string }>(
+      `/api/jobs/${taskId}`),
 }
 
 type Listener = (message: Record<string, unknown>) => void
+
+const MAX_RECONNECT_DELAY_MS = 15_000
 
 export class Socket {
   private ws: WebSocket | null = null
@@ -108,8 +152,7 @@ export class Socket {
   }
 
   private url(): string {
-    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    return `${scheme}://${window.location.host}${this.path}`
+    return `${socketUrl(this.path)}?${session.socketQuery()}`
   }
 
   private connect(): void {
@@ -134,12 +177,19 @@ export class Socket {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       this.statusListeners.forEach((fn) => fn(false))
       if (this.closed) return
-      // Exponential backoff, capped, so a stopped server does not become a
-      // reconnect storm in the browser's network tab.
-      const delay = Math.min(500 * 2 ** this.retries, 8000)
+      // 1008 is the server refusing the credentials. Reconnecting cannot fix
+      // that and would spin until the tab is closed.
+      if (event.code === 1008) {
+        session.expire()
+        return
+      }
+      // Exponential backoff, capped, with jitter so a restarted server does not
+      // get every disconnected client back in the same millisecond.
+      const base = Math.min(500 * 2 ** this.retries, MAX_RECONNECT_DELAY_MS)
+      const delay = base / 2 + Math.random() * (base / 2)
       this.retries += 1
       this.timer = window.setTimeout(() => this.connect(), delay)
     }

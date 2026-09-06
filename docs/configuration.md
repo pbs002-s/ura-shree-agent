@@ -24,6 +24,17 @@ python scripts/launch.py --host 0.0.0.0 --port 9000
 | :--- | :--- |
 | `SHREE_WORKSPACE` | Initial workspace root. Set by the launcher from `--workspace` |
 | `SHREE_DEV` | When the workspace is the repository itself, show the framework directories in the explorer instead of hiding them |
+| `SHREE_MODE` | `local` (default) or `cloud`. Cloud turns on accounts, projects, container sandboxes, rate limits and the audit trail |
+| `SHREE_API_KEY` | Optional shared secret for a local install. Compared in constant time, and **not** honoured in cloud mode - a single static string that makes its holder an administrator is the opposite of per-user identity |
+| `SHREE_ALLOWED_ORIGINS` | Comma-separated CORS origins. `*` is accepted but disables credentialed requests, because a wildcard origin with credentials turns any page on the internet into an authenticated client |
+| `SHREE_ALLOW_HOST_PICKER` | Enables the native folder dialog. Local installs only: it draws a window on the machine running the server |
+| `SHREE_LOG_JSON` | Structured JSON logs. On by default in cloud mode |
+| `SHREE_LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+
+Cloud mode adds about thirty more, covering identity, storage, the sandbox
+limits, rate limits and tracing. They are all listed with their defaults in
+[`.env.example`](../.env.example) and explained in
+[Deployment](deployment.md); none of them are needed for a local run.
 
 The workspace defaults to `./workspace` rather than the repository, so a first
 run cannot edit the engine by accident. When the root *is* the repository and
