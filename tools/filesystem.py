@@ -31,18 +31,24 @@ class FileSystemTool:
         Resolves path and enforces strict containment within workspace_root.
         Raises PermissionError if path attempts directory traversal.
         """
-        # Convert path to pure Path
-        target = (self.workspace_root / relative_path).resolve()
+        if not relative_path or not isinstance(relative_path, str):
+            raise PermissionError("Access Denied: Path cannot be empty")
+
+        if "\x00" in relative_path:
+            raise PermissionError("Access Denied: Path contains forbidden null byte characters")
+
+        # Strip redundant leading slashes so relative path resolution remains predictable
+        cleaned = relative_path.strip().lstrip("/\\")
+        root_resolved = self.workspace_root.resolve()
+        target = (root_resolved / cleaned).resolve()
 
         try:
-            # In Python 3.9+, is_relative_to checks boundary containment
-            if not target.is_relative_to(self.workspace_root):
+            if not target.is_relative_to(root_resolved):
                 raise PermissionError(
                     f"Access Denied: Path '{relative_path}' resolves outside workspace boundary '{self.workspace_root}'"
                 )
         except AttributeError:
-            # Fallback for older Path implementations
-            if not str(target).startswith(str(self.workspace_root)):
+            if not str(target).startswith(str(root_resolved)):
                 raise PermissionError(
                     f"Access Denied: Path '{relative_path}' resolves outside workspace boundary '{self.workspace_root}'"
                 )
