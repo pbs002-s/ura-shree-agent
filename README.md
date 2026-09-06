@@ -78,6 +78,7 @@ explorer, at any time, without restarting.
 | [Model](docs/model.md) | Architecture, tokenizer, the fast decode path, benchmarks |
 | [Training](docs/training.md) | Training from scratch, the distillation pipeline, the Ollama persona |
 | [Configuration](docs/configuration.md) | Flags, environment, provider keys, what gets written where |
+| [Deployment](docs/deployment.md) | Cloud mode: accounts, projects, container sandboxes, limits, the audit trail |
 
 ---
 
@@ -302,14 +303,16 @@ tests/        101 tests
 .\.venv\Scripts\pytest -q
 ```
 
-101 tests covering: causal masking and no future-token leakage, KV cache parity
+148 tests covering: causal masking and no future-token leakage, KV cache parity
 against the uncached path, CUDA graph output equality, tokenizer round-trip and
 lossless byte fallback, sandbox containment and path traversal, blocked
 destructive commands, shell state persistence and timeout recovery, provider
 request shaping and streamed tool-call assembly for both the OpenAI and
 Anthropic protocols, agent loop tool dispatch and turn budgeting, a real
 self-healing run where a failing pytest is diagnosed, patched and re-run, and
-the full HTTP and WebSocket API.
+the full HTTP and WebSocket API, and the hosted half - token forgery and
+`alg: none`, per-tenant workspace isolation, idle sandbox reaping, token-bucket
+rate limiting, credential redaction and audit-chain tamper detection.
 
 ---
 
@@ -318,13 +321,20 @@ the full HTTP and WebSocket API.
 - Filesystem tools resolve every path and refuse anything outside the workspace.
 - Uploads refuse executables, path traversal, and anything over 8 MB.
 - Mutating tools require approval by default.
-- A short list of unrecoverable shell commands is refused outright. This is not
-  a sandbox; the shell runs with your permissions. Point `--workspace` at what
-  you intend the agent to touch.
+- A short list of unrecoverable shell commands is refused outright. In local
+  mode that is a guard rail, not a sandbox: the shell runs with your
+  permissions. Point `--workspace` at what you intend the agent to touch.
 - API keys are stored obfuscated in `.shree/settings.json` and protected by file
   permissions where the OS supports it. That is not encryption, and it is not
   presented as such - the key never leaves your machine except to the provider
   it belongs to, and the API returns only a masked preview.
+
+For a hosted install, `SHREE_MODE=cloud` replaces every one of those local
+assumptions: each session gets an ephemeral container with its own CPU, memory,
+PID and network limits, every route and both WebSockets require a validated
+token, provider keys are per user, requests are rate limited per identity, and
+every tool invocation lands in an append-only audit log. See
+[Deployment](docs/deployment.md).
 
 ---
 
