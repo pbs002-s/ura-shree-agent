@@ -65,6 +65,37 @@ def test_streaming_token_generator(inference_engine):
     assert len(tokens_streamed) <= 10
 
 
+def test_speculative_decoding_wiring():
+    """Verify use_speculative=True loads a draft model and generate_speculative runs."""
+    ckpt_path = "checkpoints/best.pt" if os.path.exists("checkpoints/best.pt") else "checkpoints/last.pt"
+    if not os.path.exists(ckpt_path):
+        pytest.skip(f"No checkpoint available at {ckpt_path}. Run training first.")
+
+    engine = InferenceEngine(
+        checkpoint_path=ckpt_path,
+        tokenizer_path="checkpoints/tokenizer.json",
+        device="cpu",
+        use_speculative=True,
+        draft_checkpoint_path=ckpt_path,  # same weights as target: exercises the wiring, not draft quality
+        num_speculative_tokens=4,
+    )
+    assert engine.use_speculative
+    assert engine.draft_model is not None
+
+    out = engine.generate_speculative("def add(a, b):", max_new_tokens=12, temperature=0.0)
+    assert isinstance(out, str)
+    assert engine.last_speculative_stats is not None
+    assert engine.last_speculative_stats.rounds > 0
+
+
+def test_speculative_disabled_by_default(inference_engine):
+    """Backward compatibility: engines built without the flag never enable speculative decoding."""
+    assert inference_engine.use_speculative is False
+    assert inference_engine.draft_model is None
+    with pytest.raises(RuntimeError):
+        inference_engine.generate_speculative("hello", max_new_tokens=5)
+
+
 def test_stop_sequence_halting(inference_engine):
     """Verify generation halts immediately when a stop word is produced."""
     prompt = "SELECT * FROM users;"
