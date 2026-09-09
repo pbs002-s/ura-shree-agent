@@ -18,7 +18,13 @@ SPECIAL_TOKENS: List[str] = [
     "<|assistant|>",   # Assistant response turn marker
     "<|system|>",      # System prompt marker
     "<|tool_call|>",   # Beginning of tool invocation call
-    "<|tool_result|>", # Output of executed tool
+    "<|/tool_call|>",  # End of tool invocation call
+    "<|tool_result|>", # Beginning of executed tool output
+    "<|/tool_result|>",# End of executed tool output
+    "<|think|>",       # Beginning of private reasoning span
+    "<|/think|>",      # End of private reasoning span
+    "<|im_start|>",    # ChatML-style turn start (ext. tool-calling compatibility)
+    "<|im_end|>",      # ChatML-style turn end
 ]
 
 
