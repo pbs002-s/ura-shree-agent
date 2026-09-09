@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from model.config import ModelConfig
+from model.norm import RMSNorm
 
 # Cache entry for one layer: (keys, values) each [B, kv_heads, T, head_dim]
 KVCache = Tuple[torch.Tensor, torch.Tensor]
@@ -34,7 +35,7 @@ class CausalSelfAttention(nn.Module):
         self.num_heads = config.num_heads
         self.num_kv_heads = config.effective_kv_heads
         self.head_dim = config.head_dim
-        self.max_seq_len = config.max_seq_len
+        self.max_seq_len = config.effective_max_seq_len
         self.dropout_p = config.dropout
         self.uses_rope = config.pos_encoding == "rope"
 
@@ -55,6 +56,14 @@ class CausalSelfAttention(nn.Module):
         self._q_dim = q_dim
         self._kv_dim = kv_dim
         self.scale = 1.0 / math.sqrt(self.head_dim)
+
+        # QK-Norm: RMSNorm each head's q/k vector before the dot product.
+        # Bounds the score magnitude regardless of depth, which is what
+        # keeps attention entropy from collapsing in very deep stacks.
+        self.qk_norm = config.qk_norm
+        if self.qk_norm:
+            self.q_norm = RMSNorm(self.head_dim, eps=config.norm_eps)
+            self.k_norm = RMSNorm(self.head_dim, eps=config.norm_eps)
 
         # A materialised boolean mask is only needed for the slow path
         # (when attention weights are requested for inspection).
@@ -123,6 +132,10 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
         k = k.view(B, T, self.num_kv_heads, self.head_dim).transpose(1, 2)
         v = v.view(B, T, self.num_kv_heads, self.head_dim).transpose(1, 2)
+
+        if self.qk_norm:
+            q = self.q_norm(q)
+            k = self.k_norm(k)
 
         if rope is not None and self.uses_rope:
             cos, sin = rope

@@ -49,6 +49,8 @@ class ShreeTransformerLM(nn.Module):
                 dim=config.head_dim,
                 max_seq_len=config.max_seq_len,
                 base=config.rope_theta,
+                scaling=config.rope_scaling,
+                scaling_factor=config.rope_scaling_factor,
             )
 
         if verbose:
@@ -115,8 +117,9 @@ class ShreeTransformerLM(nn.Module):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[PastKeyValues]]:
         B, T = input_ids.shape
         offset = past_key_values[0][0].size(2) if past_key_values else 0
-        assert offset + T <= self.config.max_seq_len, (
-            f"Sequence length {offset + T} exceeds model max sequence length {self.config.max_seq_len}"
+        limit = self.config.effective_max_seq_len
+        assert offset + T <= limit, (
+            f"Sequence length {offset + T} exceeds model max sequence length {limit}"
         )
 
         x = self.embedding(input_ids, position_offset=offset)
@@ -200,6 +203,30 @@ class ShreeTransformerLM(nn.Module):
         logits = self.lm_head(x[:, -1, :])
         return logits, caches
 
+    @torch.no_grad()
+    def step_multi(
+        self,
+        input_ids: torch.Tensor,
+        past_key_values: Optional[PastKeyValues] = None,
+    ) -> Tuple[torch.Tensor, PastKeyValues]:
+        """
+        Like `step`, but returns logits for every new position instead of only
+        the last one. One forward pass over `input_ids` (typically the block of
+        tokens a draft model just proposed) yields, per position, the target
+        model's distribution for the token that would follow it - exactly what
+        speculative-decoding verification needs, without T separate calls.
+
+        Returns:
+            (logits [B, T, vocab_size] for every input position, updated cache)
+        """
+        x, _, caches = self._body(
+            input_ids,
+            past_key_values=past_key_values,
+            use_cache=True,
+            return_attention_weights=False,
+        )
+        return self.lm_head(x), caches
+
     @staticmethod
     def _apply_repetition_penalty(
         logits: torch.Tensor, sequence: torch.Tensor, penalty: float
@@ -253,7 +280,7 @@ class ShreeTransformerLM(nn.Module):
         subsequent token is a single-position forward pass.
         """
         self.eval()
-        max_len = self.config.max_seq_len
+        max_len = self.config.effective_max_seq_len
 
         context = input_ids if input_ids.size(1) <= max_len else input_ids[:, -max_len:]
         cache: Optional[PastKeyValues] = None

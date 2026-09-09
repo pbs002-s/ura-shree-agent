@@ -74,7 +74,7 @@ class TransformerEmbedding(nn.Module):
 
 class RotaryEmbedding(nn.Module):
     """
-    Rotary Position Embedding (RoPE).
+    Rotary Position Embedding (RoPE), with optional context-extension scaling.
 
     Rotates query and key vectors by an angle proportional to their absolute
     position, so that the attention inner product depends only on the relative
@@ -82,25 +82,107 @@ class RotaryEmbedding(nn.Module):
 
     The cos/sin tables are built once and grown on demand, so generating past the
     initial ``max_seq_len`` extends the table rather than failing.
+
+    ``scaling`` selects how positions beyond ``max_seq_len`` (the length the
+    model was actually trained at) are handled once the table needs to grow
+    past it:
+
+      * ``"none"``        - extend with the original frequencies unchanged.
+                             This is the historical behaviour, bit-exact for
+                             checkpoints saved before this option existed.
+      * ``"dynamic_ntk"``  - rescale the RoPE base by the extension ratio, per
+                             "NTK-Aware Scaled RoPE" - cheap and effective for
+                             modest extensions.
+      * ``"yarn"``         - blend interpolated and extrapolated frequencies
+                             per-dimension (YaRN), plus an attention
+                             temperature correction, for larger extensions.
     """
 
-    def __init__(self, dim: int, max_seq_len: int = 2048, base: float = 10000.0):
+    def __init__(
+        self,
+        dim: int,
+        max_seq_len: int = 2048,
+        base: float = 10000.0,
+        scaling: str = "none",
+        scaling_factor: float = 1.0,
+    ):
         super().__init__()
         self.dim = dim
         self.max_seq_len = max_seq_len
         self.base = base
+        self.scaling = scaling
+        # The length the model was trained at; scaling only kicks in past this.
+        self.original_max_seq_len = max_seq_len
+        self.scaling_factor = max(1.0, float(scaling_factor))
+        self.mscale = 1.0
 
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
-        self._build_tables(max_seq_len, device=inv_freq.device, dtype=torch.float32)
+        target_len = max(max_seq_len, int(max_seq_len * self.scaling_factor))
+        self._build_tables(target_len, device=inv_freq.device, dtype=torch.float32)
+
+    # -- YaRN helpers ---------------------------------------------------------
+
+    def _yarn_find_dim_range(self, num_rotations_low: float, num_rotations_high: float) -> Tuple[float, float]:
+        """Dimension indices whose wavelength falls inside [low, high] rotations."""
+
+        def find_dim(num_rotations: float) -> float:
+            return (self.dim * math.log(self.original_max_seq_len / (num_rotations * 2 * math.pi))) / (
+                2 * math.log(self.base)
+            )
+
+        low = math.floor(find_dim(num_rotations_high))
+        high = math.ceil(find_dim(num_rotations_low))
+        return max(low, 0), min(high, self.dim // 2 - 1)
+
+    def _yarn_inv_freq(self, scaling_factor: float, beta_fast: float = 32.0, beta_slow: float = 1.0) -> torch.Tensor:
+        """Per-dimension blend of interpolated and extrapolated frequencies."""
+        pos_freqs = self.base ** (torch.arange(0, self.dim, 2).float() / self.dim)
+        inv_freq_extrapolation = 1.0 / pos_freqs
+        inv_freq_interpolation = 1.0 / (scaling_factor * pos_freqs)
+
+        low, high = self._yarn_find_dim_range(beta_fast, beta_slow)
+        # Linear ramp from 0 (fully interpolated) to 1 (fully extrapolated)
+        # across the [low, high] dimension band; clamp to stay in [0, 1].
+        span = max(high - low, 1e-3)
+        idx = torch.arange(self.dim // 2, dtype=torch.float32)
+        ramp = torch.clamp((idx - low) / span, 0.0, 1.0)
+        mask = 1.0 - ramp
+        return inv_freq_interpolation * mask + inv_freq_extrapolation * (1.0 - mask)
+
+    def _resolve_inv_freq(self, seq_len: int) -> Tuple[torch.Tensor, float]:
+        """Returns (inv_freq, mscale) for a table covering ``seq_len`` positions."""
+        if self.scaling == "none" or seq_len <= self.original_max_seq_len:
+            return self.inv_freq, 1.0
+
+        ratio = seq_len / self.original_max_seq_len
+
+        if self.scaling == "dynamic_ntk":
+            # NTK-aware base rescaling: stretches wavelengths just enough to
+            # cover the new length without touching the highest frequencies.
+            adjusted_base = self.base * ((ratio * self.dim / (self.dim - 2)) - (ratio - 1)) ** (
+                self.dim / (self.dim - 2)
+            )
+            inv_freq = 1.0 / (adjusted_base ** (torch.arange(0, self.dim, 2).float() / self.dim))
+            return inv_freq, 1.0
+
+        # "yarn"
+        inv_freq = self._yarn_inv_freq(ratio)
+        # Attention temperature correction so logit magnitudes stay in range
+        # after interpolation (YaRN eq. for the "sqrt" mscale variant).
+        mscale = 0.1 * math.log(ratio) + 1.0 if ratio > 1.0 else 1.0
+        return inv_freq, mscale
 
     def _build_tables(self, seq_len: int, device: torch.device, dtype: torch.dtype) -> None:
+        inv_freq, mscale = self._resolve_inv_freq(seq_len)
+        inv_freq = inv_freq.to(device=device, dtype=torch.float32)
         t = torch.arange(seq_len, device=device, dtype=torch.float32)
-        freqs = torch.outer(t, self.inv_freq.to(device=device, dtype=torch.float32))
+        freqs = torch.outer(t, inv_freq)
         emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
-        self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
+        self.register_buffer("cos_cached", (emb.cos() * mscale).to(dtype), persistent=False)
+        self.register_buffer("sin_cached", (emb.sin() * mscale).to(dtype), persistent=False)
         self._cached_len = seq_len
+        self.mscale = mscale
 
     def tables(
         self,
