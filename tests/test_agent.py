@@ -79,6 +79,55 @@ def test_codebase_indexer():
     assert "class `ShreeTransformerLM`" in context
 
 
+def test_codebase_indexer_typescript_javascript():
+    """Verify regex-based symbol extraction on TS/TSX/JS/JSX source files."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        (
+            open(os.path.join(tmp_dir, "widget.tsx"), "w", encoding="utf-8")
+        ).write(
+            "export interface WidgetProps {\n"
+            "  label: string;\n"
+            "}\n\n"
+            "export class Widget {\n"
+            "  render(props: WidgetProps): string {\n"
+            "    return props.label;\n"
+            "  }\n"
+            "}\n\n"
+            "export function formatLabel(label: string) {\n"
+            "  return label.trim();\n"
+            "}\n\n"
+            "export const useWidget = (id: string) => {\n"
+            "  return id;\n"
+            "};\n"
+        )
+        (open(os.path.join(tmp_dir, "helpers.js"), "w", encoding="utf-8")).write(
+            "function add(a, b) {\n  return a + b;\n}\n"
+        )
+
+        indexer = CodebaseIndexer(workspace_root=tmp_dir)
+        stats = indexer.scan_and_index()
+
+        assert stats["total_files"] == 2
+
+        interfaces = indexer.find_symbols("WidgetProps")
+        assert any(s["kind"] == "interface" for s in interfaces)
+
+        classes = indexer.find_symbols("Widget")
+        assert any(s["kind"] == "class" and s["name"] == "Widget" for s in classes)
+
+        methods = indexer.find_symbols("render")
+        assert any(s["kind"] == "method" for s in methods)
+
+        functions = indexer.find_symbols("formatLabel")
+        assert any(s["kind"] == "function" for s in functions)
+
+        arrow_fns = indexer.find_symbols("useWidget")
+        assert any(s["kind"] == "function" for s in arrow_fns)
+
+        js_functions = indexer.find_symbols("add")
+        assert any(s["file"] == "helpers.js" for s in js_functions)
+
+
 def test_coding_agent_event_callback_receives_the_loop_stream(workspace, scripted):
     """The event callback must see the same stream the websocket forwards to the UI."""
     import asyncio

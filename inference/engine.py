@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -28,6 +28,7 @@ from model.config import ModelConfig
 from model.model import ShreeTransformerLM
 from tokenizer.tokenizer import BPETokenizer
 from inference.fast_decode import FastDecoder
+from inference.speculative import speculative_generate, SpeculativeStats
 from inference.runtime import (
     tune_runtime,
     quantize_for_cpu,
@@ -75,6 +76,9 @@ class InferenceEngine:
         quantize: bool = False,
         compile_model: bool = False,
         fast_decode: bool = True,
+        use_speculative: bool = False,
+        draft_checkpoint_path: Optional[str] = None,
+        num_speculative_tokens: int = 4,
     ):
         if not os.path.exists(tokenizer_path):
             raise FileNotFoundError(f"Tokenizer not found at {tokenizer_path}")
@@ -89,31 +93,7 @@ class InferenceEngine:
             self.compute_dtype = getattr(torch, dtype)
             self.profile.dtype = dtype
 
-        # mmap keeps the checkpoint off the heap while the state dict is copied
-        # tensor by tensor, so peak host RAM stays near one tensor rather than
-        # a whole second copy of the model.
-        try:
-            raw = torch.load(checkpoint_path, map_location="cpu", weights_only=False, mmap=True)
-        except (TypeError, RuntimeError):
-            raw = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-
-        cfg_dict = raw.get("config", {})
-        if isinstance(cfg_dict, dict) and "model" in cfg_dict and isinstance(cfg_dict["model"], dict):
-            cfg_dict = cfg_dict["model"]
-        self.model_config = ModelConfig.from_dict(cfg_dict)
-        # Dropout is a training-time regulariser; leaving it on at inference
-        # only adds noise and a kernel launch per layer.
-        self.model_config.dropout = 0.0
-
-        self.model = ShreeTransformerLM(self.model_config, verbose=False)
-        self.model.load_state_dict(raw["model_state_dict"])
-        self.model.eval()
-        for param in self.model.parameters():
-            param.requires_grad_(False)
-
-        self.step_count = raw.get("step", 0)
-        self.val_loss = raw.get("val_loss", 0.0)
-        del raw
+        self.model, self.model_config, self.step_count, self.val_loss = self._load_model(checkpoint_path)
 
         if quantize and self.device.type == "cpu":
             self.model, applied = quantize_for_cpu(self.model)
@@ -133,6 +113,7 @@ class InferenceEngine:
         self.eos_id = self.tokenizer.eos_id
         self.pad_id = self.tokenizer.pad_id
         self.last_stats = GenerationStats()
+        self.last_speculative_stats: Optional[SpeculativeStats] = None
 
         # Decoding a small model is bound by kernel launches, not arithmetic.
         # The graph decoder collapses a step into one replay; see
@@ -143,6 +124,48 @@ class InferenceEngine:
         )
         if self.use_graph_decode:
             self.profile.notes.append("CUDA graph decoding enabled")
+
+        # Speculative decoding: a small draft model proposes tokens the
+        # target model verifies in one batched forward pass. Off by default,
+        # and silently skipped if no draft checkpoint is given - it only pays
+        # off with a genuinely smaller draft model on hand.
+        self.draft_model: Optional[ShreeTransformerLM] = None
+        self.num_speculative_tokens = num_speculative_tokens
+        self.use_speculative = False
+        if use_speculative and draft_checkpoint_path and os.path.exists(draft_checkpoint_path):
+            draft_model, draft_config, _, _ = self._load_model(draft_checkpoint_path)
+            self.draft_model = draft_model.to(device=self.device, dtype=self.compute_dtype)
+            self.draft_config = draft_config
+            self.use_speculative = True
+            self.profile.notes.append(f"Speculative decoding enabled (draft={draft_checkpoint_path})")
+
+    def _load_model(self, path: str) -> Tuple[ShreeTransformerLM, ModelConfig, int, float]:
+        """Loads one checkpoint's weights into a fresh model, left on CPU/fp32."""
+        # mmap keeps the checkpoint off the heap while the state dict is copied
+        # tensor by tensor, so peak host RAM stays near one tensor rather than
+        # a whole second copy of the model.
+        try:
+            raw = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
+        except (TypeError, RuntimeError):
+            raw = torch.load(path, map_location="cpu", weights_only=False)
+
+        cfg_dict = raw.get("config", {})
+        if isinstance(cfg_dict, dict) and "model" in cfg_dict and isinstance(cfg_dict["model"], dict):
+            cfg_dict = cfg_dict["model"]
+        config = ModelConfig.from_dict(cfg_dict)
+        # Dropout is a training-time regulariser; leaving it on at inference
+        # only adds noise and a kernel launch per layer.
+        config.dropout = 0.0
+
+        model = ShreeTransformerLM(config, verbose=False)
+        model.load_state_dict(raw["model_state_dict"])
+        model.eval()
+        for param in model.parameters():
+            param.requires_grad_(False)
+
+        step = raw.get("step", 0)
+        val_loss = raw.get("val_loss", 0.0)
+        return model, config, step, val_loss
 
     # -- introspection ------------------------------------------------------
 
@@ -175,6 +198,11 @@ class InferenceEngine:
             "runtime": self.profile.to_dict(),
             "graph_decode": self._fast.info() if self._fast else {"captured": False},
             "last_generation": self.last_stats.to_dict(),
+            "speculative": {
+                "enabled": self.use_speculative,
+                "num_speculative_tokens": self.num_speculative_tokens,
+                "last_round": self.last_speculative_stats.to_dict() if self.last_speculative_stats else None,
+            },
         }
 
     # -- generation ---------------------------------------------------------
@@ -357,3 +385,43 @@ class InferenceEngine:
     def generate(self, prompt: str, **kwargs) -> str:
         """Non-streaming generation; returns the whole completion as one string."""
         return "".join(self.generate_stream(prompt, **kwargs))
+
+    @torch.inference_mode()
+    def generate_speculative(
+        self,
+        prompt: str,
+        max_new_tokens: int = 512,
+        temperature: float = 0.0,
+    ) -> str:
+        """
+        Non-streaming generation via the draft model + target-model verification
+        (see inference/speculative.py). Requires the engine to have been built
+        with `use_speculative=True` and a working `draft_checkpoint_path`.
+        """
+        if not self.use_speculative or self.draft_model is None:
+            raise RuntimeError(
+                "Speculative decoding is not enabled on this engine; pass "
+                "use_speculative=True and a valid draft_checkpoint_path."
+            )
+
+        tokens = self._encode(prompt)
+        prompt_len = tokens.size(1)
+        stats = GenerationStats(prompt_tokens=prompt_len)
+
+        t0 = time.perf_counter()
+        output, spec_stats = speculative_generate(
+            self.model,
+            self.draft_model,
+            tokens,
+            max_new_tokens=max_new_tokens,
+            num_speculative_tokens=self.num_speculative_tokens,
+            temperature=temperature,
+            eos_id=self.eos_id,
+        )
+        stats.decode_ms = (time.perf_counter() - t0) * 1000.0
+        stats.completion_tokens = output.size(1) - prompt_len
+        self.last_stats = stats
+        self.last_speculative_stats = spec_stats
+
+        new_ids = output[0, prompt_len:].tolist()
+        return self.tokenizer.decode(new_ids, skip_special_tokens=True)

@@ -132,6 +132,10 @@ def decode_step(
         k = k.view(1, 1, attention.num_kv_heads, attention.head_dim).transpose(1, 2)
         v = v.view(1, 1, attention.num_kv_heads, attention.head_dim).transpose(1, 2)
 
+        if attention.qk_norm:
+            q = attention.q_norm(q)
+            k = attention.k_norm(k)
+
         if rope is not None and attention.uses_rope:
             q, k = attention._apply_rope(q, k, rope[0], rope[1])
 

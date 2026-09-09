@@ -93,6 +93,36 @@ def test_special_tokens_preservation():
     assert "Write a Python function." in decoded_stripped
 
 
+def test_tool_calling_special_tokens_lossless():
+    """Verify the tool-call/result and reasoning span tokens survive intact, never split."""
+    tokenizer = BPETokenizer()
+
+    text = (
+        "<|im_start|>user\nWrite a function.<|im_end|>\n"
+        "<|im_start|>assistant\n<|think|>plan the steps<|/think|>\n"
+        "<|tool_call|>filesystem.list<|/tool_call|>\n"
+        "<|tool_result|>[\"a.py\"]<|/tool_result|>\n"
+        "Done.<|im_end|>"
+    )
+    ids = tokenizer.encode(text)
+
+    for tok in (
+        "<|im_start|>", "<|im_end|>",
+        "<|think|>", "<|/think|>",
+        "<|tool_call|>", "<|/tool_call|>",
+        "<|tool_result|>", "<|/tool_result|>",
+    ):
+        assert tokenizer.vocab.get_id(tok) in ids, f"{tok} was not preserved as a single id"
+
+    assert tokenizer.decode(ids, skip_special_tokens=False) == text
+
+    stripped = tokenizer.decode(ids, skip_special_tokens=True)
+    assert "<|im_start|>" not in stripped
+    assert "<|think|>" not in stripped
+    assert "Write a function." in stripped
+    assert "plan the steps" in stripped
+
+
 def test_bpe_training_and_compression():
     """Verify training learns merges and reduces sequence length (compression)."""
     # Base tokenizer length on corpus

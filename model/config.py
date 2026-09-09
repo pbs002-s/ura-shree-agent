@@ -29,8 +29,11 @@ class ModelConfig:
     # before these fields existed still load and evaluate identically.
     pos_encoding: str = "learned"      # "learned" | "rope"
     rope_theta: float = 10000.0
+    rope_scaling: str = "none"         # "none" | "dynamic_ntk" | "yarn" - context extension past max_seq_len
+    rope_scaling_factor: float = 1.0   # target_len / max_seq_len; 1.0 = no extension
     num_kv_heads: int = 0              # 0 or == num_heads means plain MHA
     ffn: str = "gelu"                  # "gelu" | "swiglu"
+    qk_norm: bool = False              # RMSNorm on q/k before attention scores (stabilises training)
 
     def __post_init__(self):
         self.vocab_size = int(self.vocab_size)
@@ -55,6 +58,13 @@ class ModelConfig:
         self.ffn = str(self.ffn).lower()
         assert self.ffn in ("gelu", "swiglu"), f"ffn must be 'gelu' or 'swiglu', got {self.ffn!r}"
 
+        self.rope_scaling = str(self.rope_scaling).lower()
+        assert self.rope_scaling in ("none", "dynamic_ntk", "yarn"), (
+            f"rope_scaling must be 'none', 'dynamic_ntk' or 'yarn', got {self.rope_scaling!r}"
+        )
+        self.rope_scaling_factor = float(self.rope_scaling_factor)
+        self.qk_norm = bool(self.qk_norm)
+
         self.num_kv_heads = int(self.num_kv_heads or 0)
         if self.num_kv_heads:
             assert self.num_heads % self.num_kv_heads == 0, (
@@ -71,6 +81,13 @@ class ModelConfig:
     @property
     def head_dim(self) -> int:
         return self.embed_dim // self.num_heads
+
+    @property
+    def effective_max_seq_len(self) -> int:
+        """Usable context length once RoPE scaling extends past max_seq_len."""
+        if self.rope_scaling == "none":
+            return self.max_seq_len
+        return int(self.max_seq_len * self.rope_scaling_factor)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

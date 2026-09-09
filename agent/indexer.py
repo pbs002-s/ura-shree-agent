@@ -11,6 +11,22 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Set
 
 
+# TS/JS have no stdlib AST, so symbols are pulled out with regex instead of
+# pulling in a parser dependency. Good enough to make `find_symbols` useful
+# for full-stack repos; it can miscount edge cases (multi-line signatures,
+# decorators) that a real parser would not.
+_TS_JS_CLASS = re.compile(r"^\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)")
+_TS_JS_INTERFACE = re.compile(r"^\s*(?:export\s+)?interface\s+(\w+)")
+_TS_JS_FUNCTION = re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)")
+_TS_JS_ARROW_FN = re.compile(
+    r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*(?::\s*[^=]+)?=\s*(?:async\s*)?\(([^)]*)\)\s*(?::\s*[^=]+)?=>"
+)
+_TS_JS_METHOD = re.compile(
+    r"^\s*(?:public|private|protected|static|readonly|async|\s)*(\w+)\s*\(([^)]*)\)\s*(?::\s*[^{;]+)?\s*\{"
+)
+_TS_JS_RESERVED = {"if", "for", "while", "switch", "catch", "function", "return", "constructor"}
+
+
 class CodebaseIndexer:
     """
     Analyzes and maps the local project codebase.
@@ -59,6 +75,8 @@ class CodebaseIndexer:
 
                 if file.endswith(".py"):
                     self._index_python_file(fpath, rel_path)
+                elif file.endswith((".ts", ".tsx", ".js", ".jsx")):
+                    self._index_ts_js_file(fpath, rel_path)
 
         return {
             "total_files": len(self.files),
@@ -107,6 +125,43 @@ class CodebaseIndexer:
                 }
                 file_defs.append(entry)
                 self.symbols.setdefault(node.name.lower(), []).append(entry)
+
+        if file_defs:
+            self.file_symbols[rel_path] = file_defs
+
+    def _index_ts_js_file(self, fpath: Path, rel_path: str) -> None:
+        """Regex-based symbol extraction for TS/TSX/JS/JSX: classes, interfaces, functions, methods."""
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+        except Exception:
+            return
+
+        file_defs: List[Dict[str, Any]] = []
+        brace_depth = 0
+
+        def record(kind: str, name: str, lineno: int, sig: Optional[str] = None) -> None:
+            entry: Dict[str, Any] = {"kind": kind, "name": name, "file": rel_path, "line": lineno, "doc": ""}
+            if sig is not None:
+                entry["signature"] = sig
+            file_defs.append(entry)
+            self.symbols.setdefault(name.lower(), []).append(entry)
+
+        for lineno, line in enumerate(lines, start=1):
+            if m := _TS_JS_CLASS.match(line):
+                record("class", m.group(1), lineno)
+            elif m := _TS_JS_INTERFACE.match(line):
+                record("interface", m.group(1), lineno)
+            elif m := _TS_JS_FUNCTION.match(line):
+                record("function", m.group(1), lineno, f"{m.group(1)}({m.group(2)})")
+            elif m := _TS_JS_ARROW_FN.match(line):
+                record("function", m.group(1), lineno, f"{m.group(1)}({m.group(2)})")
+            elif brace_depth > 0 and (m := _TS_JS_METHOD.match(line)):
+                name = m.group(1)
+                if name not in _TS_JS_RESERVED:
+                    record("method", name, lineno, f"{name}({m.group(2)})")
+
+            brace_depth += line.count("{") - line.count("}")
 
         if file_defs:
             self.file_symbols[rel_path] = file_defs
