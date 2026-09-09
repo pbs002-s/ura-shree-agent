@@ -155,6 +155,80 @@ def test_autoregressive_generation(tiny_config):
     assert out_sampled.shape == (1, 4 + gen_len)
 
 
+def test_rmsnorm_forward_and_backward():
+    """RMSNorm should normalize RMS to ~1 (pre-weight) and backprop cleanly."""
+    norm = RMSNorm(dim=16, eps=1e-5)
+    x = torch.randn(4, 8, 16, requires_grad=True)
+    out = norm(x)
+    assert out.shape == x.shape
+
+    # With weight == 1, output RMS per vector should be ~1.
+    rms = out.detach().pow(2).mean(dim=-1).sqrt()
+    assert torch.allclose(rms, torch.ones_like(rms), atol=1e-3)
+
+    out.sum().backward()
+    assert x.grad is not None
+    assert not torch.isnan(x.grad).any()
+    assert norm.weight.grad is not None
+
+
+def test_qk_norm_forward_and_backward(tiny_config):
+    """QK-Norm should run, keep shapes, and receive gradients when enabled."""
+    tiny_config.qk_norm = True
+    attn = CausalSelfAttention(tiny_config)
+    assert hasattr(attn, "q_norm") and hasattr(attn, "k_norm")
+
+    x = torch.randn(2, 12, tiny_config.embed_dim, requires_grad=True)
+    out, _weights, _cache = attn(x)
+    assert out.shape == (2, 12, tiny_config.embed_dim)
+
+    out.sum().backward()
+    assert x.grad is not None
+    assert attn.q_norm.weight.grad is not None
+    assert attn.k_norm.weight.grad is not None
+
+
+def test_qk_norm_disabled_by_default(tiny_config):
+    """Backward compatibility: qk_norm defaults off, no extra params allocated."""
+    attn = CausalSelfAttention(tiny_config)
+    assert not hasattr(attn, "q_norm")
+    assert not hasattr(attn, "k_norm")
+
+
+def test_rope_scaling_extends_context_past_max_seq_len():
+    """rope_scaling should allow forward passes longer than the base max_seq_len."""
+    cfg = ModelConfig(
+        name="test-yarn",
+        vocab_size=128,
+        max_seq_len=32,
+        embed_dim=32,
+        num_layers=2,
+        num_heads=4,
+        intermediate_dim=64,
+        pos_encoding="rope",
+        rope_scaling="yarn",
+        rope_scaling_factor=4.0,
+        dropout=0.0,
+    )
+    model = ShreeTransformerLM(cfg, verbose=False)
+    long_input = torch.randint(0, 128, (1, 100))  # well past max_seq_len=32
+    logits, _ = model(long_input)
+    assert logits.shape == (1, 100, 128)
+
+
+def test_rope_scaling_none_matches_legacy_behavior(tiny_config):
+    """rope_scaling='none' (the default) must reproduce the pre-scaling RoPE table exactly."""
+    tiny_config.pos_encoding = "rope"
+    baseline = RotaryEmbedding(dim=tiny_config.head_dim, max_seq_len=tiny_config.max_seq_len)
+    scaled_off = RotaryEmbedding(
+        dim=tiny_config.head_dim, max_seq_len=tiny_config.max_seq_len, scaling="none"
+    )
+    cos_a, sin_a = baseline.tables(tiny_config.max_seq_len)
+    cos_b, sin_b = scaled_off.tables(tiny_config.max_seq_len)
+    assert torch.equal(cos_a, cos_b)
+    assert torch.equal(sin_a, sin_b)
+
+
 def test_cuda_execution_if_available(tiny_config):
     """Verify model can execute forward and backward passes on NVIDIA GPU."""
     if not torch.cuda.is_available():
