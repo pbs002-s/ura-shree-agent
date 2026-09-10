@@ -167,6 +167,73 @@ CODING_TRACES: List[str] = [
             }
         ],
         summary="Cleaned temporary `.pytest_cache` directory safely."
+    ),
+
+    # Trace 6: Full Git Workflow: Stage, Commit, and Push to GitHub Remote
+    make_agent_trace(
+        task="Stage our project updates, commit them, and push the branch to GitHub.",
+        steps=[
+            {
+                "thought": "I will check git status to inspect modified files.",
+                "tool_call": {"tool": "git", "action": "status", "args": {}},
+                "tool_result": {"status": "success", "modified": ["tools/git.py", "agent/toolkit.py"]},
+            },
+            {
+                "thought": "I will stage the modified files.",
+                "tool_call": {"tool": "git", "action": "add", "args": {"files": ["tools/git.py", "agent/toolkit.py"]}},
+                "tool_result": {"status": "success", "files_staged": ["tools/git.py", "agent/toolkit.py"]},
+            },
+            {
+                "thought": "I will commit the staged changes with an informative message.",
+                "tool_call": {"tool": "git", "action": "commit", "args": {"message": "feat(git): add remote push capability to agent"}},
+                "tool_result": {"status": "success", "commit_hash": "e4f8a12"},
+            },
+            {
+                "thought": "Now I will push the committed changes to remote GitHub origin.",
+                "tool_call": {"tool": "git", "action": "push", "args": {"remote": "origin", "branch": "dev"}},
+                "tool_result": {"status": "success", "remote": "origin", "branch": "dev", "output": "Everything up-to-date"},
+            }
+        ],
+        summary="Staged changes, created commit e4f8a12, and successfully pushed to origin/dev on GitHub."
+    ),
+
+    # Trace 7: Mathematical Problem Solving and Arithmetic Verification
+    make_agent_trace(
+        task="Calculate the sum of squares of the first 5 positive integers and verify the exact result.",
+        steps=[
+            {
+                "thought": "I will calculate the sum of squares for integers 1 through 5: 1^2 + 2^2 + 3^2 + 4^2 + 5^2.",
+                "tool_call": {"tool": "terminal", "action": "execute", "args": {"command": "python -c \"print(sum(x**2 for x in range(1, 6)))\""}},
+                "tool_result": {"status": "success", "stdout": "55\n", "returncode": 0},
+            }
+        ],
+        summary="The sum of squares of the first 5 positive integers is 1 + 4 + 9 + 16 + 25 = 55."
+    ),
+
+    # Trace 8: Basic Math Direct Calculation & Percentages
+    make_agent_trace(
+        task="A product costs $120 and has a 15% discount. What is the final price?",
+        steps=[
+            {
+                "thought": "I will calculate the discount amount: 15% of $120 = 0.15 * 120 = $18. Then final price = 120 - 18 = $102.",
+                "tool_call": {"tool": "terminal", "action": "execute", "args": {"command": "python -c \"price = 120; discount = 0.15 * price; print(price - discount)\""}},
+                "tool_result": {"status": "success", "stdout": "102.0\n", "returncode": 0},
+            }
+        ],
+        summary="The 15% discount on $120 is $18, making the final discounted price $102."
+    ),
+
+    # Trace 9: Direct GitHub Push of Feature Branch
+    make_agent_trace(
+        task="Push our new feature branch 'feature/math-eval' to GitHub origin with upstream tracking.",
+        steps=[
+            {
+                "thought": "I will push the branch to remote origin with upstream tracking enabled.",
+                "tool_call": {"tool": "git", "action": "push", "args": {"remote": "origin", "branch": "feature/math-eval", "set_upstream": True}},
+                "tool_result": {"status": "success", "remote": "origin", "branch": "feature/math-eval", "output": "Branch 'feature/math-eval' set up to track remote branch from 'origin'."},
+            }
+        ],
+        summary="Pushed branch 'feature/math-eval' to GitHub origin with upstream tracking configured."
     )
 ]
 
