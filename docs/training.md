@@ -111,3 +111,20 @@ python scripts/train_custom_datasets.py --config configs/medium.yaml --steps 300
 5. **`data/coding_corpus.py` & `data/prepare_dataset.py`**: Agent tool traces and foundational coding algorithms.
 
 This pipeline enforces mixed-precision (BF16), linear warmup with cosine annealing, automatic checkpoint preservation (`checkpoints/medium_best.pt` & `checkpoints/best.pt`), and live generation benchmarking.
+
+## Coding, Math & GitHub Agent SFT
+
+The local model is fine-tuned on multi-turn agent tool traces, basic arithmetic/math calculation reasoning, and GitHub push workflows:
+
+```powershell
+# 1. Compile balanced coding, math, and git dataset with uniform document shuffling
+python -m data.prepare_coding_dataset
+
+# 2. Run GPU fine-tuning on RTX 4060
+python -m training.train_coding --steps 60 --lr 2.0e-4
+
+# 3. Verify math and git inference
+pytest tests/test_math_git_inference.py
+```
+
+Evaluation validates direct arithmetic calculations (addition, subtraction, multiplication, division), git command sequences (`git add`, `git commit`, `git push origin main`), and tool invocations.

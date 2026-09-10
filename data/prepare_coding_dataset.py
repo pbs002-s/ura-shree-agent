@@ -88,7 +88,9 @@ def prepare_coding_dataset(
         ("What is 15 * 8?", "15 * 8 = 120."),
         ("Calculate 15 * 8", "15 * 8 = 120."),
         ("What is 100 / 4?", "100 / 4 = 25."),
+        ("Calculate 100 / 4", "100 / 4 = 25."),
         ("What is 50 - 18?", "50 - 18 = 32."),
+        ("Calculate 50 - 18", "50 - 18 = 32."),
         ("What is 7 * 6?", "7 * 6 = 42."),
         ("What is 9 * 9?", "9 * 9 = 81."),
         ("What is 12 + 15?", "12 + 15 = 27."),
@@ -100,9 +102,14 @@ def prepare_coding_dataset(
     for q, a in PRIORITY_PAIRS:
         d1 = f"<|bos|><|user|>\n{q}\n<|assistant|>\n{a}\n<|eos|>"
         d2 = f"<|bos|><|system|>\nYou are Shree, an autonomous AI coding assistant developed under URA.\n<|user|>\n{q}\n<|assistant|>\n{a}\n<|eos|>"
-        docs.extend([d1, d2] * 60)
+        docs.extend([d1, d2] * 50)
 
-    print(f"[Coding Prep] Loaded {len(docs)} total training documents.")
+    # Crucial: Shuffle documents so tokens are uniformly distributed across training steps
+    import random
+    random.seed(42)
+    random.shuffle(docs)
+
+    print(f"[Coding Prep] Loaded and shuffled {len(docs)} total training documents.")
 
     # 3. Tokenize
     all_tokens: list[int] = []
