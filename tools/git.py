@@ -54,6 +54,7 @@ class GitTool:
             return {
                 "success": True,
                 "clean": True,
+                "is_clean": True,
                 "message": "Workspace active (Git repository not initialized).",
                 "staged": [],
                 "unstaged": [],
