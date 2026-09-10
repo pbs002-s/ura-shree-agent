@@ -23,7 +23,7 @@ from providers.base import ToolSpec
 
 # Tools that change the workspace. Used to decide when to snapshot and when the
 # UI should ask for confirmation.
-MUTATING_TOOLS = {"write_file", "edit_file", "run_command"}
+MUTATING_TOOLS = {"write_file", "edit_file", "run_command", "git_push"}
 
 
 def _string(description: str) -> Dict[str, Any]:
@@ -139,6 +139,18 @@ TOOL_SPECS: List[ToolSpec] = [
         parameters={"type": "object", "properties": {}},
     ),
     ToolSpec(
+        name="git_push",
+        description="Push committed changes to a remote repository branch on GitHub or Git remote.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "remote": _string("Remote repository name, defaults to 'origin'."),
+                "branch": _string("Branch name to push to, e.g. 'main' or 'dev'."),
+                "set_upstream": {"type": "boolean", "description": "Set upstream tracking (-u)."},
+            },
+        },
+    ),
+    ToolSpec(
         name="remember",
         description=(
             "Record a durable fact about this project so it survives into later sessions. "
@@ -215,7 +227,7 @@ class Toolkit:
         for spec in TOOL_SPECS:
             if spec.name == "find_symbols" and self.indexer is None:
                 continue
-            if spec.name == "git_status" and self.git is None:
+            if spec.name in ("git_status", "git_push") and self.git is None:
                 continue
             if spec.name == "remember" and self.memory is None:
                 continue
@@ -431,6 +443,22 @@ class Toolkit:
         if patch:
             text += f"\n\n{patch}"
         return {"ok": True, "text": text, "data": {"status": status, "diff": diff}}
+
+    def _tool_git_push(
+        self, remote: str = "origin", branch: Optional[str] = None, set_upstream: bool = False
+    ) -> Dict[str, Any]:
+        result = self.git.push(remote=remote, branch=branch, set_upstream=set_upstream)
+        if not result.get("success"):
+            return {
+                "ok": False,
+                "text": f"Git push failed: {result.get('error', 'unknown error')}",
+                "data": result,
+            }
+        return {
+            "ok": True,
+            "text": f"Successfully pushed to {remote} ({branch or 'default branch'}).\n{result.get('output', '')}",
+            "data": result,
+        }
 
     def _tool_remember(self, category: str, key: str, value: str) -> Dict[str, Any]:
         self.memory.set_fact(key=key, value=value, category=category)
