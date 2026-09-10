@@ -200,6 +200,38 @@ CLEAN_DIALOGUES: List[Dict[str, str]] = [
         "user": "how do I undo my last commit",
         "asst": "To undo the commit while keeping changes staged: `git reset --soft HEAD~1`.\nTo undo and unstage: `git reset HEAD~1`."
     },
+    {
+        "user": "how do I push code to GitHub",
+        "asst": "To push your code to GitHub:\n1. Stage your changes: `git add .`\n2. Commit with a message: `git commit -m \"Your descriptive message\"`\n3. Push to your remote branch: `git push origin main` (or `git push origin <branch>`)."
+    },
+    {
+        "user": "how to push to github",
+        "asst": "Stage, commit, and push:\n```bash\ngit add .\ngit commit -m \"feat: update project\"\ngit push origin main\n```"
+    },
+    {
+        "user": "how to push changes to git",
+        "asst": "Run `git push origin <branch_name>`. If pushing the branch for the first time, use `git push -u origin <branch_name>` to set upstream tracking."
+    },
+    {
+        "user": "how to push a new branch to github",
+        "asst": "```bash\ngit checkout -b feature/new-feature\ngit add .\ngit commit -m \"feat: add new feature\"\ngit push -u origin feature/new-feature\n```"
+    },
+    {
+        "user": "what does git push -u origin main do",
+        "asst": "`git push -u origin main` pushes the `main` branch to the `origin` remote and sets upstream tracking (`-u`), so subsequent commands only require `git push` or `git pull`."
+    },
+    {
+        "user": "how to set up git remote origin for github",
+        "asst": "Link your local repository to GitHub:\n```bash\ngit remote add origin https://github.com/username/repository.git\ngit branch -M main\ngit push -u origin main\n```"
+    },
+    {
+        "user": "how to push multiple commits to github",
+        "asst": "Once you have created your commits locally, run `git push origin <branch>` to send all unpushed commits to GitHub at once."
+    },
+    {
+        "user": "how to fix git push rejected",
+        "asst": "If git push is rejected because the remote contains work you don't have, pull and rebase before pushing:\n```bash\ngit pull --rebase origin <branch>\ngit push origin <branch>\n```"
+    },
 
     # --- Web & API Development ---
     {
