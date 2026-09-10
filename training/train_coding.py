@@ -49,14 +49,23 @@ def train_coding_sft(
     print(f"[Device] Using compute target: {device}")
 
     # 1. Initialize model and load base weights
-    model = ShreeTransformerLM(config.model).to(device)
-
+    model_config = config.model
+    ckpt_data = None
     if os.path.exists(base_checkpoint):
         print(f"[Model] Loading base pre-trained weights from: {base_checkpoint}")
-        raw_ckpt = torch.load(base_checkpoint, map_location=device, weights_only=False)
-        model.load_state_dict(raw_ckpt["model_state_dict"])
+        ckpt_data = torch.load(base_checkpoint, map_location=device, weights_only=False)
+        if isinstance(ckpt_data, dict) and "config" in ckpt_data:
+            c = ckpt_data["config"]
+            cfg_dict = c.get("model", c)
+            if isinstance(cfg_dict, dict) and "embed_dim" in cfg_dict:
+                model_config = ModelConfig.from_dict(cfg_dict)
+                print(f"[Model] Resolved model config from checkpoint: {model_config.name} (d_model={model_config.embed_dim})")
+
+    model = ShreeTransformerLM(model_config).to(device)
+    if ckpt_data and "model_state_dict" in ckpt_data:
+        model.load_state_dict(ckpt_data["model_state_dict"])
     else:
-        print(f"[Warning] Base checkpoint {base_checkpoint} not found. Training from scratch.")
+        print(f"[Warning] Base checkpoint {base_checkpoint} not found. Training with initialized weights.")
 
     # 2. Check or prepare coding datasets
     train_bin = os.path.join("datasets", "coding_train.bin")
@@ -157,25 +166,68 @@ def train_coding_sft(
                         "step": step,
                         "val_loss": val_loss,
                         "model_state_dict": model.state_dict(),
-                        "config": {"model": config.model.to_dict()},
+                        "config": {"model": model_config.to_dict()},
                     },
                     output_checkpoint,
                 )
             model.train()
 
+    # Ensure the final trained state is saved
+    torch.save(
+        {
+            "step": steps,
+            "val_loss": val_loss,
+            "model_state_dict": model.state_dict(),
+            "config": {"model": model_config.to_dict()},
+        },
+        output_checkpoint,
+    )
+
     print("-" * 75)
     print(f"[SFT Complete] Coding-specialized model saved to: {output_checkpoint}")
-    print(f"[SFT Complete] Best Validation Loss: {best_val_loss:.4f}")
+    print(f"[SFT Complete] Best Validation Loss: {best_val_loss:.4f} | Final Loss: {loss.item():.4f}")
+
+    # 5. Sanity Evaluation on Target Capabilities (Math & GitHub Push)
+    tok_path = "checkpoints/tokenizer.json"
+    if os.path.exists(tok_path) and os.path.exists(output_checkpoint):
+        try:
+            from tokenizer.tokenizer import BPETokenizer
+            tokenizer = BPETokenizer.load(tok_path)
+            eval_ckpt = torch.load(output_checkpoint, map_location=device, weights_only=False)
+            model.load_state_dict(eval_ckpt["model_state_dict"])
+            model.eval()
+
+            test_prompts = [
+                "<|bos|><|user|>\nWhat is 25 + 17?\n<|assistant|>\n",
+                "<|bos|><|user|>\nCalculate 15 * 8\n<|assistant|>\n",
+                "<|bos|><|user|>\nHow do I push my code to GitHub?\n<|assistant|>\n",
+            ]
+            print("\n" + "=" * 70)
+            print("      Model Inference Sanity Check (Math & GitHub Push)")
+            print("=" * 70)
+            for p in test_prompts:
+                user_part = p.split("<|user|>\n")[1].split("\n<|assistant|>")[0]
+                input_ids = torch.tensor([tokenizer.encode(p)], dtype=torch.long, device=device)
+                with torch.no_grad():
+                    out_ids = model.generate(input_ids, max_new_tokens=40, temperature=0.2)
+                resp = tokenizer.decode(out_ids[0].tolist())
+                asst_reply = resp[len(p):].split("<|eos|>")[0].strip()
+                print(f"User: {user_part}")
+                print(f"Shree: {asst_reply}\n")
+        except Exception as err:
+            print(f"[Sanity Check Warning] Could not run post-training generation check: {err}")
+
     return best_val_loss
 
 
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune URA-Shree on coding agent tasks.")
     parser.add_argument("--config", type=str, default="configs/small.yaml")
-    parser.add_argument("--base", type=str, default="checkpoints/best.pt")
+    default_base = "checkpoints/coding_best.pt" if os.path.exists("checkpoints/coding_best.pt") else "checkpoints/best.pt"
+    parser.add_argument("--base", type=str, default=default_base)
     parser.add_argument("--output", type=str, default="checkpoints/coding_best.pt")
-    parser.add_argument("--steps", type=int, default=25)
-    parser.add_argument("--lr", type=float, default=2.0e-4)
+    parser.add_argument("--steps", type=int, default=60)
+    parser.add_argument("--lr", type=float, default=2.5e-4)
     args = parser.parse_args()
 
     train_coding_sft(

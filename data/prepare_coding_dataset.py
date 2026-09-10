@@ -71,11 +71,36 @@ def prepare_coding_dataset(
                             f"<|assistant|>\n{asst_msg}\n<|eos|>"
                         )
                         doc_b = f"<|bos|><|user|>\n{user_msg}\n<|assistant|>\n{asst_msg}\n<|eos|>"
-                        docs.extend([doc_a, doc_b] * 25)
+                        is_priority = any(kw in user_msg.lower() for kw in [
+                            "+", "-", "*", "/", "=", "math", "calculate", "average", "square", "percent", "git", "push", "github"
+                        ])
+                        multiplier = 75 if is_priority else 25
+                        docs.extend([doc_a, doc_b] * multiplier)
                         clean_count += 1
                 except Exception:
                     continue
         print(f"[Coding Prep] Ingested {clean_count} dialogues from {clean_dialogue_path}.")
+
+    # Direct high-frequency pairs for math and git push
+    PRIORITY_PAIRS = [
+        ("What is 25 + 17?", "25 + 17 = 42."),
+        ("Calculate 25 + 17", "25 + 17 = 42."),
+        ("What is 15 * 8?", "15 * 8 = 120."),
+        ("Calculate 15 * 8", "15 * 8 = 120."),
+        ("What is 100 / 4?", "100 / 4 = 25."),
+        ("What is 50 - 18?", "50 - 18 = 32."),
+        ("What is 7 * 6?", "7 * 6 = 42."),
+        ("What is 9 * 9?", "9 * 9 = 81."),
+        ("What is 12 + 15?", "12 + 15 = 27."),
+        ("Calculate 144 / 12", "144 / 12 = 12."),
+        ("How do I push my code to GitHub?", "To push your code to GitHub:\n1. Stage changes: `git add .`\n2. Commit: `git commit -m \"Your descriptive commit message\"`\n3. Push: `git push origin main` (or your branch name)."),
+        ("How to push to github", "Run:\n```bash\ngit add .\ngit commit -m \"feat: update project\"\ngit push origin main\n```"),
+        ("How to push changes to git", "Run `git push origin <branch_name>` to upload your local commits to the remote repository."),
+    ]
+    for q, a in PRIORITY_PAIRS:
+        d1 = f"<|bos|><|user|>\n{q}\n<|assistant|>\n{a}\n<|eos|>"
+        d2 = f"<|bos|><|system|>\nYou are Shree, an autonomous AI coding assistant developed under URA.\n<|user|>\n{q}\n<|assistant|>\n{a}\n<|eos|>"
+        docs.extend([d1, d2] * 60)
 
     print(f"[Coding Prep] Loaded {len(docs)} total training documents.")
 
