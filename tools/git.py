@@ -161,3 +161,38 @@ class GitTool:
 
         commits = [line.strip() for line in stdout.splitlines() if line.strip()]
         return {"success": True, "commits": commits}
+
+    def push(
+        self,
+        remote: str = "origin",
+        branch: Optional[str] = None,
+        set_upstream: bool = False,
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Pushes committed changes to a remote repository branch.
+        """
+        args = ["push"]
+        if set_upstream:
+            args.append("-u")
+        if force:
+            args.append("--force")
+        args.append(remote)
+        if branch:
+            args.append(branch)
+
+        code, stdout, stderr = self._run_git(args)
+        if code != 0:
+            return {
+                "success": False,
+                "error": stderr or stdout or "Failed to push commits to remote repository.",
+                "remote": remote,
+                "branch": branch,
+            }
+
+        return {
+            "success": True,
+            "output": stdout or stderr or "Pushed to remote successfully.",
+            "remote": remote,
+            "branch": branch,
+        }
