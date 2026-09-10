@@ -55,6 +55,91 @@ CLEAN_DIALOGUES: List[Dict[str, str]] = [
         "user": "what is diu",
         "asst": "DIU stands for Daffodil International University, a leading private university in Bangladesh where my creator Pritam studied."
     },
+    # --- Basic Mathematics & Problem Solving ---
+    {
+        "user": "can you do math",
+        "asst": "Yes, I can perform basic arithmetic, algebra, percentages, geometry calculations, and solve mathematical problems step by step."
+    },
+    {
+        "user": "what is 25 + 17",
+        "asst": "25 + 17 = 42."
+    },
+    {
+        "user": "calculate 25 + 17",
+        "asst": "25 + 17 = 42."
+    },
+    {
+        "user": "what is 50 - 18",
+        "asst": "50 - 18 = 32."
+    },
+    {
+        "user": "calculate 15 * 8",
+        "asst": "15 * 8 = 120."
+    },
+    {
+        "user": "what is 7 * 6",
+        "asst": "7 * 6 = 42."
+    },
+    {
+        "user": "what is 9 * 9",
+        "asst": "9 * 9 = 81."
+    },
+    {
+        "user": "what is 100 / 4",
+        "asst": "100 / 4 = 25."
+    },
+    {
+        "user": "calculate 144 / 12",
+        "asst": "144 / 12 = 12."
+    },
+    {
+        "user": "what is 12 + 15",
+        "asst": "12 + 15 = 27."
+    },
+    {
+        "user": "calculate 99 + 1",
+        "asst": "99 + 1 = 100."
+    },
+    {
+        "user": "what is 2 to the power of 8",
+        "asst": "2^8 = 256."
+    },
+    {
+        "user": "what is 15 % 4",
+        "asst": "15 % 4 = 3 (since 15 = 4 * 3 + 3)."
+    },
+    {
+        "user": "what is 20 percent of 150",
+        "asst": "20% of 150 is 30 (0.20 * 150 = 30)."
+    },
+    {
+        "user": "what is the square root of 64",
+        "asst": "The square root of 64 is 8 (8 * 8 = 64)."
+    },
+    {
+        "user": "calculate 5 + 3 * 2",
+        "asst": "Following the order of operations (multiplication before addition): 3 * 2 = 6, then 5 + 6 = 11."
+    },
+    {
+        "user": "calculate (10 - 4) * 3",
+        "asst": "First evaluate inside the parentheses: 10 - 4 = 6. Then multiply: 6 * 3 = 18."
+    },
+    {
+        "user": "what is the average of 10, 20, and 30",
+        "asst": "The average is (10 + 20 + 30) / 3 = 60 / 3 = 20."
+    },
+    {
+        "user": "solve for x: 2x + 6 = 20",
+        "asst": "To solve 2x + 6 = 20:\n1. Subtract 6 from both sides: 2x = 14.\n2. Divide by 2: x = 7."
+    },
+    {
+        "user": "solve for x: 3x - 9 = 0",
+        "asst": "To solve 3x - 9 = 0:\n1. Add 9 to both sides: 3x = 9.\n2. Divide by 3: x = 3."
+    },
+    {
+        "user": "if a rectangle has length 8 and width 5, what is its area and perimeter",
+        "asst": "Area = length * width = 8 * 5 = 40.\nPerimeter = 2 * (length + width) = 2 * (8 + 5) = 26."
+    },
 
     # --- Python Programming ---
     {
@@ -114,6 +199,38 @@ CLEAN_DIALOGUES: List[Dict[str, str]] = [
     {
         "user": "how do I undo my last commit",
         "asst": "To undo the commit while keeping changes staged: `git reset --soft HEAD~1`.\nTo undo and unstage: `git reset HEAD~1`."
+    },
+    {
+        "user": "how do I push code to GitHub",
+        "asst": "To push your code to GitHub:\n1. Stage your changes: `git add .`\n2. Commit with a message: `git commit -m \"Your descriptive message\"`\n3. Push to your remote branch: `git push origin main` (or `git push origin <branch>`)."
+    },
+    {
+        "user": "how to push to github",
+        "asst": "Stage, commit, and push:\n```bash\ngit add .\ngit commit -m \"feat: update project\"\ngit push origin main\n```"
+    },
+    {
+        "user": "how to push changes to git",
+        "asst": "Run `git push origin <branch_name>`. If pushing the branch for the first time, use `git push -u origin <branch_name>` to set upstream tracking."
+    },
+    {
+        "user": "how to push a new branch to github",
+        "asst": "```bash\ngit checkout -b feature/new-feature\ngit add .\ngit commit -m \"feat: add new feature\"\ngit push -u origin feature/new-feature\n```"
+    },
+    {
+        "user": "what does git push -u origin main do",
+        "asst": "`git push -u origin main` pushes the `main` branch to the `origin` remote and sets upstream tracking (`-u`), so subsequent commands only require `git push` or `git pull`."
+    },
+    {
+        "user": "how to set up git remote origin for github",
+        "asst": "Link your local repository to GitHub:\n```bash\ngit remote add origin https://github.com/username/repository.git\ngit branch -M main\ngit push -u origin main\n```"
+    },
+    {
+        "user": "how to push multiple commits to github",
+        "asst": "Once you have created your commits locally, run `git push origin <branch>` to send all unpushed commits to GitHub at once."
+    },
+    {
+        "user": "how to fix git push rejected",
+        "asst": "If git push is rejected because the remote contains work you don't have, pull and rebase before pushing:\n```bash\ngit pull --rebase origin <branch>\ngit push origin <branch>\n```"
     },
 
     # --- Web & API Development ---
