@@ -42,7 +42,42 @@ def prepare_coding_dataset(
 
     # 2. Get Corpus Documents
     docs = get_all_coding_documents(replications=replications)
-    print(f"[Coding Prep] Loaded {len(docs)} instruction-tuning documents.")
+
+    # Blend with clean technical dialogues (basic math, GitHub push, identity, coding)
+    clean_dialogue_path = os.path.join("dataset", "clean_coding_dialogues.jsonl")
+    if os.path.exists(clean_dialogue_path):
+        import json
+        clean_count = 0
+        with open(clean_dialogue_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    messages = data.get("messages", [])
+                    user_msg, asst_msg = "", ""
+                    for m in messages:
+                        if m.get("role") == "user":
+                            user_msg = m.get("content", "").strip()
+                        elif m.get("role") == "assistant":
+                            asst_msg = m.get("content", "").strip()
+                    if user_msg and asst_msg:
+                        # Include system-prompt and direct user-prompt variants
+                        doc_a = (
+                            "<|bos|><|system|>\n"
+                            "You are Shree, an autonomous AI coding assistant developed under URA.\n"
+                            f"<|user|>\n{user_msg}\n"
+                            f"<|assistant|>\n{asst_msg}\n<|eos|>"
+                        )
+                        doc_b = f"<|bos|><|user|>\n{user_msg}\n<|assistant|>\n{asst_msg}\n<|eos|>"
+                        docs.extend([doc_a, doc_b] * 25)
+                        clean_count += 1
+                except Exception:
+                    continue
+        print(f"[Coding Prep] Ingested {clean_count} dialogues from {clean_dialogue_path}.")
+
+    print(f"[Coding Prep] Loaded {len(docs)} total training documents.")
 
     # 3. Tokenize
     all_tokens: list[int] = []
