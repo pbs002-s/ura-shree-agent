@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, formatBytes } from '../lib/api'
 import { IconCheck, IconClose } from '../lib/icons'
 
@@ -15,6 +15,8 @@ export function CodeEditorModal({ path, onClose, onSaved, onNotify }: CodeEditor
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const gutterRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (!path) return
@@ -44,6 +46,12 @@ export function CodeEditorModal({ path, onClose, onSaved, onNotify }: CodeEditor
   const isDirty = content !== initialContent
   const linesCount = content.split('\n').length
   const language = path.split('.').pop() || 'text'
+
+  const handleScroll = () => {
+    if (gutterRef.current && textareaRef.current) {
+      gutterRef.current.scrollTop = textareaRef.current.scrollTop
+    }
+  }
 
   const handleSave = async () => {
     if (!path || saving) return
@@ -112,22 +120,24 @@ export function CodeEditorModal({ path, onClose, onSaved, onNotify }: CodeEditor
           {loading ? (
             <div className="code-editor-loading faint">Loading file…</div>
           ) : (
-            <div className="code-editor-wrapper">
-              <div className="code-editor-line-numbers">
+            <>
+              <div ref={gutterRef} className="code-editor-gutter">
                 {Array.from({ length: linesCount }, (_, i) => (
                   <div key={i + 1}>{i + 1}</div>
                 ))}
               </div>
               <textarea
+                ref={textareaRef}
                 className="code-editor-textarea"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
+                onScroll={handleScroll}
                 onKeyDown={handleKeyDown}
                 spellCheck={false}
                 autoCapitalize="off"
                 autoComplete="off"
               />
-            </div>
+            </>
           )}
         </div>
 
@@ -142,3 +152,4 @@ export function CodeEditorModal({ path, onClose, onSaved, onNotify }: CodeEditor
     </div>
   )
 }
+
