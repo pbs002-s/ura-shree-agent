@@ -195,7 +195,7 @@ export function FilesPanel({
             className="btn btn-ghost btn-sm faint"
             onClick={() => onSelectWorkspace?.('')}
             title="Detach folder to enter pure General Chat Mode"
-            style={{ fontSize: 10, padding: '1px 5px', height: 20 }}
+            style={{ fontSize: 'var(--fs-xs)', padding: '1px 6px', height: 22 }}
           >
             Detach
           </button>

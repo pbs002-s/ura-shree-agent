@@ -256,8 +256,8 @@ input:focus, textarea:focus, select:focus {
 .section-label {
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-3);
 }
 
@@ -466,7 +466,7 @@ input:focus, textarea:focus, select:focus {
   place-items: center;
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   flex: none;
 }
@@ -543,7 +543,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .thinking-badge {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
   background: var(--bg-sunk);
   padding: 1px 7px;
@@ -710,7 +710,7 @@ input:focus, textarea:focus, select:focus {
   color: var(--text);
 }
 .composer-hint {
-  font-size: 11.5px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
   user-select: none;
 }
@@ -1203,8 +1203,8 @@ input:focus, textarea:focus, select:focus {
 }
 .code-editor-pill {
   font-family: var(--font-mono);
-  font-size: 11px;
-  text-transform: uppercase;
+  font-size: var(--fs-xs);
+  text-transform: none;
   padding: 2px 6px;
   border-radius: 4px;
   background: var(--surface-3);
@@ -1461,7 +1461,7 @@ input:focus, textarea:focus, select:focus {
   background: var(--bg-sunk);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
   max-height: 70px;
   overflow-y: auto;
@@ -1519,8 +1519,8 @@ input:checked + .slider:before {
   overflow-x: auto;
 }
 .term-chip-label {
-  font-size: 10px;
-  text-transform: uppercase;
+  font-size: var(--fs-xs);
+  text-transform: none;
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--text-3);
@@ -1532,7 +1532,7 @@ input:checked + .slider:before {
   border: 1px solid var(--line);
   background: var(--surface);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-2);
   cursor: pointer;
   transition: all var(--speed);
@@ -1797,7 +1797,7 @@ input:checked + .slider:before {
   background: var(--surface-3);
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
   line-height: 1;
 }
 .hint-sep { margin: 0 5px; color: var(--text-3); }
@@ -1814,7 +1814,7 @@ input:checked + .slider:before {
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
   font-weight: 500;
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -2153,10 +2153,10 @@ input:checked + .slider:before {
 .palette-list { flex: 1; overflow-y: auto; padding: 6px; min-height: 0; }
 .palette-group {
   padding: 9px 10px 4px;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--text-3);
 }
 .palette-item {
@@ -2175,7 +2175,7 @@ input:checked + .slider:before {
 .palette-icon { display: grid; place-items: center; width: 18px; flex: none; }
 .palette-hint {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
   flex: none;
 }
