@@ -165,6 +165,14 @@ PROVIDERS: Dict[str, ProviderSpec] = {
         docs_url="https://lmstudio.ai",
         notes="Start the LM Studio local server first.",
     ),
+    "clusterone": ProviderSpec(
+        id="clusterone",
+        label="ClusterOne (lab GPU cluster)",
+        protocol="openai",
+        base_url="",
+        notes="Base URL: https://<your-cluster>/api/v1/openai/v1. The same key also runs fine-tune jobs from the Cluster panel.",
+        fallback_models=["auto"],
+    ),
     "custom": ProviderSpec(
         id="custom",
         label="Custom OpenAI-compatible",

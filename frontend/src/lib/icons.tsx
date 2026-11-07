@@ -34,6 +34,13 @@ function Svg({ size = 16, children, ...rest }: IconProps) {
 export const IconChat = (p: IconProps) => (
   <Svg {...p}><path d="M21 12a8 8 0 0 1-11.7 7.1L3 21l1.9-6.3A8 8 0 1 1 21 12Z" /></Svg>
 )
+export const IconCluster = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="6" rx="1.5" />
+    <rect x="3" y="14" width="18" height="6" rx="1.5" />
+    <path d="M7 7h.01M7 17h.01M11 7h6M11 17h6" />
+  </Svg>
+)
 export const IconFiles = (p: IconProps) => (
   <Svg {...p}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /></Svg>
 )

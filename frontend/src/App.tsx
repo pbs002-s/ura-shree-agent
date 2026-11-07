@@ -7,12 +7,12 @@ import { DiffView } from './components/DiffView'
 import { FilesPanel, MemoryPanel, TimelinePanel } from './components/Sidebar'
 import { SettingsDialog } from './components/Settings'
 import { SkillsModal } from './components/SkillsModal'
+import { ClusterDialog } from './components/ClusterDialog'
 import { TerminalPanel } from './components/Terminal'
-import { AsciiWaves } from './components/AsciiWaves'
 import { api, formatBytes, Socket } from './lib/api'
 import { exportSession } from './lib/export'
 import {
-  IconAlert, IconBolt, IconBrain, IconCamera, IconChat, IconCheck, IconChevronDown, IconClock,
+  IconAlert, IconBolt, IconBrain, IconCamera, IconChat, IconCheck, IconChevronDown, IconClock, IconCluster,
   IconCommand, IconCompass, IconCpu, IconDownload, IconFiles, IconMonitor, IconMoon, IconPalette,
   IconPlus, IconSettings, IconSun, IconTerminal, IconUraShreeLogo,
 } from './lib/icons'
@@ -27,7 +27,7 @@ type DockPanel = 'terminal' | 'diff'
 const THEME_KEY = 'shree.theme'
 const ACCENT_KEY = 'shree.accent'
 const LANDING_URL = '/landing.html'
-const ACCENT_OPTIONS: Accent[] = ['ember', 'crimson', 'indigo', 'moss', 'slate']
+const ACCENT_OPTIONS: Accent[] = ['teal', 'blue', 'iris', 'amber', 'graphite']
 const MAX_ATTACHMENT_BYTES = 400_000
 
 function applyTheme(theme: Theme): void {
@@ -63,7 +63,11 @@ export default function App() {
     () => (localStorage.getItem(THEME_KEY) as Theme) || 'system',
   )
   const [accent, setAccent] = useState<Accent>(
-    () => (localStorage.getItem(ACCENT_KEY) as Accent) || 'ember',
+    () => {
+      // Saved values from the old palette (ember, moss...) fall back to the default.
+      const saved = localStorage.getItem(ACCENT_KEY) as Accent | null
+      return saved && ACCENT_OPTIONS.includes(saved) ? saved : 'teal'
+    },
   )
   const [status, setStatus] = useState<Status | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -71,6 +75,7 @@ export default function App() {
   const [workspace, setWorkspace] = useState<string | null>(null)
   const [editorPath, setEditorPath] = useState<string | null>(null)
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [clusterOpen, setClusterOpen] = useState(false)
 
   const [turns, setTurns] = useState<Turn[]>([])
   const [busy, setBusy] = useState(false)
@@ -561,6 +566,14 @@ export default function App() {
         run: () => setSkillsOpen(true),
       },
       {
+        id: 'cluster',
+        label: 'Open GPU cluster (fine-tune on ClusterOne)',
+        group: 'Go to',
+        icon: <IconCluster size={14} />,
+        keywords: 'clusterone gpu train finetune jobs sweep',
+        run: () => setClusterOpen(true),
+      },
+      {
         id: 'landing',
         label: 'Open the project overview page',
         group: 'Go to',
@@ -601,8 +614,6 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="ambient" aria-hidden="true" />
-      <AsciiWaves opacity={0.3} />
       <nav className="rail">
         <button
           className="rail-brand"
@@ -642,6 +653,14 @@ export default function App() {
           aria-label="Agent Skills"
         >
           <IconBolt size={18} />
+        </button>
+        <button
+          className={`rail-btn${clusterOpen ? ' active' : ''}`}
+          onClick={() => setClusterOpen(true)}
+          title="GPU cluster: fine-tune on ClusterOne"
+          aria-label="Open GPU cluster"
+        >
+          <IconCluster size={18} />
         </button>
         <span className="spacer" />
         <button
@@ -877,6 +896,14 @@ export default function App() {
       {skillsOpen && (
         <SkillsModal
           onClose={() => setSkillsOpen(false)}
+          onNotify={notify}
+        />
+      )}
+
+      {clusterOpen && (
+        <ClusterDialog
+          onClose={() => setClusterOpen(false)}
+          onOpenSettings={() => { setClusterOpen(false); setSettingsOpen(true) }}
           onNotify={notify}
         />
       )}

@@ -59,6 +59,7 @@ from server.auth import (
     principal_for_socket, remember_oauth_state, require_admin, resolve_principal,
     verify_password,
 )
+from server.cluster import make_router as make_cluster_router
 from server.config import config
 from server.observability import (
     CorrelationMiddleware, bind_context, configure_logging, get_logger, setup_tracing, span,
@@ -1826,6 +1827,9 @@ def admin_audit_verify(_admin: Principal = Depends(require_admin)) -> Dict[str, 
 @app.exception_handler(ProviderError)
 async def provider_error_handler(_request, exc: ProviderError) -> JSONResponse:
     return JSONResponse(status_code=exc.status or 502, content={"detail": str(exc)})
+
+
+app.include_router(make_cluster_router(settings_for))
 
 
 # The compiled frontend is mounted last so it never shadows an /api route.

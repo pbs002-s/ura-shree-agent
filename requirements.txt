@@ -18,5 +18,8 @@ pydantic>=2.6.0
 # is reached over its streaming interface.
 httpx>=0.27.0
 
+# Optional: ClusterOne GPU jobs (Cluster panel). A local, dependency-free package:
+#   pip install -e ../clausterone
+
 # Tests
 pytest>=8.0.0

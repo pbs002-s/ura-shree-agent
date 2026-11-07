@@ -13,11 +13,11 @@ const NO_MODELS: ModelInfo[] = []
 // Swatch colour is the light-theme accent; the dark variant is picked up from
 // the stylesheet once the attribute is set.
 const ACCENTS: { id: Accent; label: string; swatch: string }[] = [
-  { id: 'ember', label: 'Ember', swatch: '#c2551f' },
-  { id: 'crimson', label: 'Crimson', swatch: '#b0233f' },
-  { id: 'indigo', label: 'Indigo', swatch: '#4c56b8' },
-  { id: 'moss', label: 'Moss', swatch: '#4a7a48' },
-  { id: 'slate', label: 'Slate', swatch: '#4a5560' },
+  { id: 'teal', label: 'Teal', swatch: '#0f766e' },
+  { id: 'blue', label: 'Blue', swatch: '#2558d9' },
+  { id: 'iris', label: 'Iris', swatch: '#5b55d6' },
+  { id: 'amber', label: 'Amber', swatch: '#a35a0b' },
+  { id: 'graphite', label: 'Graphite', swatch: '#3f3f46' },
 ]
 
 const SECTIONS: { id: Section; label: string }[] = [
@@ -213,13 +213,13 @@ export function SettingsDialog({
                     </div>
                   )}
 
-                  {(spec?.id === 'custom' || spec?.id === 'ollama' || spec?.id === 'lmstudio') && (
+                  {(spec?.id === 'custom' || spec?.id === 'ollama' || spec?.id === 'lmstudio' || spec?.id === 'clusterone') && (
                     <div className="field">
                       <label htmlFor="baseurl">Base URL</label>
                       <input
                         id="baseurl"
                         value={baseDraft}
-                        placeholder="http://localhost:11434/v1"
+                        placeholder={spec?.id === 'clusterone' ? 'https://your-cluster/api/v1/openai/v1' : 'http://localhost:11434/v1'}
                         onChange={(e) => setBaseDraft(e.target.value)}
                       />
                     </div>

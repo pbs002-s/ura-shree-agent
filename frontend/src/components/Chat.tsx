@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Markdown } from '../lib/markdown'
 import {
   IconAlert, IconBolt, IconBranch, IconBrain, IconBug, IconCheck, IconChevronRight, IconClose,
@@ -345,16 +345,9 @@ export function Chat({
         <div className="chat-inner">
           {turns.length === 0 ? (
             <div className="chat-welcome">
-              <div className="row" style={{ gap: 11, marginBottom: 8 }}>
+              <div className="row" style={{ gap: 12, marginBottom: 8 }}>
                 <IconUraShreeLogo size={30} />
-                <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600 }}>
-                  {'What are we building?'.split(' ').map((word, i) => (
-                    <span key={word} className="word" style={{ '--i': i } as CSSProperties}>
-                      <span>{word}</span>
-                      {' '}
-                    </span>
-                  ))}
-                </div>
+                <h1 className="welcome-title">What are we building?</h1>
               </div>
               <p className="muted" style={{ marginTop: 0, marginBottom: 18, maxWidth: '58ch' }}>
                 Shree reads and edits files, runs commands in a persistent shell, and snapshots the
