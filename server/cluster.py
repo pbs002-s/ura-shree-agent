@@ -19,7 +19,9 @@ command is assembled here from validated values only.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import re
+import socket
 import shutil
 import tempfile
 import zipfile
@@ -31,6 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from server.auth import Principal, current_principal
+from server.config import config
 from server.ratelimit import rate_limit
 
 PROVIDER_ID = "clusterone"
@@ -72,6 +75,37 @@ def cluster_root(base_url: str) -> str:
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return ""
     return url
+
+
+def resolves_to_public_address(url: str) -> bool:
+    """
+    False when the host resolves to a loopback, private, link-local or reserved
+    address. In cloud mode the cluster URL is tenant-supplied, and without this
+    the server would fetch internal hosts (cloud metadata, admin ports) for them.
+    DNS rebinding between this check and the request is not covered.
+    """
+    host = urlparse(url).hostname
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0].split("%")[0])
+        if not ip.is_global:
+            return False
+    return True
+
+
+def require_operator(principal: Principal) -> None:
+    """
+    Fine-tunes upload this server's checkpoints and datasets, and downloads write
+    into this server's outputs/ folder. On a single-user local install that is the
+    user's own machine; in cloud mode only an administrator may do either.
+    """
+    if config.cloud and not principal.is_admin:
+        raise HTTPException(403, "Only an administrator can run fine-tunes or download outputs on this server.")
 
 
 def list_base_checkpoints() -> List[str]:
@@ -183,6 +217,8 @@ def make_router(settings_for: Callable[[Principal], Any]) -> APIRouter:
         s = settings_for(principal)
         root = cluster_root(s.base_url(PROVIDER_ID))
         key = s.api_key(PROVIDER_ID)
+        if root and config.cloud and not resolves_to_public_address(root):
+            raise HTTPException(422, "The cluster URL must point to a public host on this server.")
         if not root or not key:
             raise HTTPException(
                 409,
@@ -265,6 +301,7 @@ def make_router(settings_for: Callable[[Principal], Any]) -> APIRouter:
 
     @router.post("/jobs/{jid}/download", dependencies=[Depends(rate_limit("cluster", "rate_limit_scan"))])
     async def job_download(jid: str, principal: Principal = Depends(current_principal)) -> Dict[str, Any]:
+        require_operator(principal)
         c = client_for(principal)
         j = await call(lambda: c.job(job_id(jid)))
         safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", j.name)[:60] or "job"
@@ -277,6 +314,7 @@ def make_router(settings_for: Callable[[Principal], Any]) -> APIRouter:
 
     @router.post("/finetune", dependencies=[Depends(rate_limit("cluster", "rate_limit_scan"))])
     async def finetune(req: FineTuneRequest, principal: Principal = Depends(current_principal)) -> Dict[str, Any]:
+        require_operator(principal)
         c = client_for(principal)
         lrs = req.sweep_lr or [req.lr]
         steps = req.sweep_steps or [req.steps]
