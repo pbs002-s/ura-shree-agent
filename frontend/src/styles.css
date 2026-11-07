@@ -10,107 +10,105 @@
 */
 
 :root {
-  /* Neutral ramp - light */
-  --bg:            #f7f6f3;
-  --bg-sunk:       #efede8;
+  /* Neutral ramp - light. Cool zinc greys: quiet, no warm cast. */
+  --bg:            #f7f7f8;
+  --bg-sunk:       #eff0f2;
   --surface:       #ffffff;
-  --surface-2:     #faf9f7;
-  --surface-3:     #f1efeb;
-  --line:          #e0ddd6;
-  --line-strong:   #c9c5bb;
+  --surface-2:     #fafafb;
+  --surface-3:     #f1f2f4;
+  --line:          #e4e5e9;
+  --line-strong:   #cfd1d7;
 
-  /* Text */
-  --text:          #1c1b19;
-  --text-2:        #55524c;
-  --text-3:        #86827a;
-  --text-inverse:  #faf9f7;
+  /* Text. Every step passes 4.5:1 on --surface. */
+  --text:          #18181b;
+  --text-2:        #4f4f57;
+  --text-3:        #6b6b74;
+  --text-inverse:  #fafafa;
 
-  /* Accent: burnt orange. Deliberately not the default AI blue-violet. */
-  --accent:        #c2551f;
-  --accent-hover:  #a84718;
-  --accent-soft:   #fbeee6;
-  --accent-line:   #f0cdb6;
-  --on-accent:     #fffaf6;
+  /* Accent: calm teal. One colour, used for the primary action and focus. */
+  --accent:        #0f766e;
+  --accent-hover:  #115e59;
+  --accent-soft:   #e7f4f2;
+  --accent-line:   #bfe2dd;
+  --on-accent:     #ffffff;
 
   /* Semantic */
-  --ok:            #2f7a5f;
-  --ok-soft:       #e6f2ec;
-  --warn:          #9a6b00;
-  --warn-soft:     #fbf1d9;
-  --danger:        #b3372c;
-  --danger-soft:   #fbe9e7;
-  --info:          #2b6ba8;
-  --info-soft:     #e7f0f8;
+  --ok:            #15803d;
+  --ok-soft:       #e8f5ec;
+  --warn:          #a16207;
+  --warn-soft:     #fdf4dc;
+  --danger:        #c0352b;
+  --danger-soft:   #fdecea;
+  --info:          #2563eb;
+  --info-soft:     #e9effd;
 
   /* Diff */
-  --add-bg:        #e4f3e9;
-  --add-text:      #216b45;
-  --del-bg:        #fbe6e4;
-  --del-text:      #9c2f26;
+  --add-bg:        #e6f4ea;
+  --add-text:      #166534;
+  --del-bg:        #fdeaea;
+  --del-text:      #a3261d;
 
-  /* Type */
-  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-             "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
-               Menlo, Consolas, "Liberation Mono", monospace;
+  /* Type: Geist, one family, mono for code only. */
+  --font-ui: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 
-  --fs-xs:   11px;
-  --fs-sm:   12px;
-  --fs-base: 13px;
-  --fs-md:   14px;
-  --fs-lg:   16px;
-  --fs-xl:   20px;
+  --fs-xs:   12px;
+  --fs-sm:   12.5px;
+  --fs-base: 14px;
+  --fs-md:   15px;
+  --fs-lg:   17px;
+  --fs-xl:   22px;
 
   /* Space and shape */
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 10px;
-  --shadow-1: 0 1px 2px rgba(28, 27, 25, 0.06), 0 1px 1px rgba(28, 27, 25, 0.04);
-  --shadow-2: 0 4px 16px rgba(28, 27, 25, 0.10), 0 1px 3px rgba(28, 27, 25, 0.06);
-  --shadow-3: 0 16px 48px rgba(28, 27, 25, 0.18);
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --shadow-1: 0 1px 2px rgba(24, 24, 27, 0.05);
+  --shadow-2: 0 6px 20px -6px rgba(24, 24, 27, 0.12), 0 1px 3px rgba(24, 24, 27, 0.05);
+  --shadow-3: 0 24px 60px -12px rgba(24, 24, 27, 0.22);
 
   --rail-w: 52px;
-  --header-h: 44px;
+  --header-h: 48px;
   --speed: 130ms;
 }
 
 :root[data-theme='dark'] {
-  --bg:            #131417;
-  --bg-sunk:       #0d0e10;
-  --surface:       #191b1f;
-  --surface-2:     #1e2126;
-  --surface-3:     #24272d;
-  --line:          #2b2f36;
-  --line-strong:   #3a3f48;
+  --bg:            #111113;
+  --bg-sunk:       #0c0c0e;
+  --surface:       #18181b;
+  --surface-2:     #1c1c20;
+  --surface-3:     #25252a;
+  --line:          #2a2a30;
+  --line-strong:   #3a3a42;
 
-  --text:          #e8e6e1;
-  --text-2:        #a5a49f;
-  --text-3:        #74736f;
-  --text-inverse:  #16171a;
+  --text:          #ececef;
+  --text-2:        #a8a8b0;
+  --text-3:        #8a8a93;
+  --text-inverse:  #111113;
 
-  --accent:        #e0713a;
-  --accent-hover:  #ef8149;
-  --accent-soft:   #2a1d15;
-  --accent-line:   #4a2f1e;
-  --on-accent:     #1a0f07;
+  --accent:        #4fb8ab;
+  --accent-hover:  #67c6ba;
+  --accent-soft:   #12241f;
+  --accent-line:   #1f4440;
+  --on-accent:     #06110f;
 
-  --ok:            #58b98d;
-  --ok-soft:       #16261f;
-  --warn:          #d6a13c;
+  --ok:            #4ade80;
+  --ok-soft:       #11241a;
+  --warn:          #e0a83d;
   --warn-soft:     #2a2314;
-  --danger:        #e8705f;
-  --danger-soft:   #2c1917;
-  --info:          #6aa9dd;
-  --info-soft:     #16222d;
+  --danger:        #f07065;
+  --danger-soft:   #2c1716;
+  --info:          #7aa7f5;
+  --info-soft:     #141d2e;
 
-  --add-bg:        #14291f;
-  --add-text:      #6cc496;
-  --del-bg:        #2d1a18;
-  --del-text:      #e3897c;
+  --add-bg:        #12261b;
+  --add-text:      #6ad19a;
+  --del-bg:        #2d1918;
+  --del-text:      #f09088;
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-3: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --shadow-2: 0 6px 20px -6px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 24px 60px -12px rgba(0, 0, 0, 0.7);
 }
 
 * { box-sizing: border-box; }
