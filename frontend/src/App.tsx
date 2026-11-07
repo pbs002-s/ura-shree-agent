@@ -9,7 +9,6 @@ import { SettingsDialog } from './components/Settings'
 import { SkillsModal } from './components/SkillsModal'
 import { ClusterDialog } from './components/ClusterDialog'
 import { TerminalPanel } from './components/Terminal'
-import { AsciiWaves } from './components/AsciiWaves'
 import { api, formatBytes, Socket } from './lib/api'
 import { exportSession } from './lib/export'
 import {
@@ -615,8 +614,6 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="ambient" aria-hidden="true" />
-      <AsciiWaves opacity={0.3} />
       <nav className="rail">
         <button
           className="rail-brand"
