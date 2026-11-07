@@ -1,5 +1,5 @@
 export type Theme = 'light' | 'dark' | 'system'
-export type Accent = 'ember' | 'crimson' | 'indigo' | 'moss' | 'slate'
+export type Accent = 'teal' | 'blue' | 'iris' | 'amber' | 'graphite'
 
 export interface ProviderSpec {
   id: string

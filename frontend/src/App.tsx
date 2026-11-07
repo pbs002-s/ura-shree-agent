@@ -28,7 +28,7 @@ type DockPanel = 'terminal' | 'diff'
 const THEME_KEY = 'shree.theme'
 const ACCENT_KEY = 'shree.accent'
 const LANDING_URL = '/landing.html'
-const ACCENT_OPTIONS: Accent[] = ['ember', 'crimson', 'indigo', 'moss', 'slate']
+const ACCENT_OPTIONS: Accent[] = ['teal', 'blue', 'iris', 'amber', 'graphite']
 const MAX_ATTACHMENT_BYTES = 400_000
 
 function applyTheme(theme: Theme): void {
@@ -64,7 +64,11 @@ export default function App() {
     () => (localStorage.getItem(THEME_KEY) as Theme) || 'system',
   )
   const [accent, setAccent] = useState<Accent>(
-    () => (localStorage.getItem(ACCENT_KEY) as Accent) || 'ember',
+    () => {
+      // Saved values from the old palette (ember, moss...) fall back to the default.
+      const saved = localStorage.getItem(ACCENT_KEY) as Accent | null
+      return saved && ACCENT_OPTIONS.includes(saved) ? saved : 'teal'
+    },
   )
   const [status, setStatus] = useState<Status | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
