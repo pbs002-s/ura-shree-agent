@@ -204,3 +204,41 @@ def test_sdk_auth_errors_become_a_clear_message(make_client, monkeypatch):
     assert r.status_code == 401
     assert "API key" in r.json()["detail"]
 
+
+# -- cloud mode hardening -------------------------------------------------------
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1:8000", "http://localhost", "http://169.254.169.254",
+    "http://10.0.0.5", "http://192.168.1.10", "http://[::1]:8000",
+])
+def test_private_cluster_urls_are_not_public(url):
+    assert cluster.resolves_to_public_address(url) is False
+
+
+def test_cloud_mode_refuses_a_private_cluster_url(make_client, monkeypatch):
+    monkeypatch.setattr(cluster.config, "mode", "cloud")
+    client = make_client(FakeSettings(base="http://169.254.169.254/api/v1/openai/v1"))
+    r = client.get("/api/cluster/nodes")
+    assert r.status_code == 422
+
+
+def test_cloud_mode_requires_admin_for_finetune_and_download(make_client, monkeypatch):
+    monkeypatch.setattr(cluster.config, "mode", "cloud")
+    monkeypatch.setattr(cluster, "resolves_to_public_address", lambda _url: True)
+    client = make_client()
+    assert client.post("/api/cluster/finetune", json={}).status_code == 403
+    assert client.post("/api/cluster/jobs/abc123/download").status_code == 403
+    assert FakeClient.submitted == []
+    # Read-only views of the tenant's own cluster stay available.
+    assert client.get("/api/cluster/jobs").status_code == 200
+
+
+def test_cluster_routes_require_authentication_in_cloud_mode(monkeypatch, tmp_path):
+    import server.api as api
+    monkeypatch.setattr(api.config, "mode", "cloud")
+    monkeypatch.setattr(api.config, "jwt_secret", "test-secret-value")
+    monkeypatch.setattr(api.config, "workspaces_root", tmp_path)
+    with TestClient(api.app) as client:
+        for method, path in (("get", "/api/cluster/status"), ("get", "/api/cluster/jobs"),
+                             ("post", "/api/cluster/finetune")):
+            assert getattr(client, method)(path).status_code == 401, path
