@@ -2432,3 +2432,16 @@ input:not([type='checkbox']):not([type='radio']):focus-visible, select:focus-vis
   word-break: break-word;
 }
 
+/* ── Small screens ──────────────────────────────────────────────────────── */
+
+@media (max-width: 820px) {
+  .header { gap: 6px; padding: 0 8px; overflow: hidden; }
+  .header .chip, .header .kbd, .header kbd { display: none; }
+  .cluster-grid { grid-template-columns: 1fr; height: auto; }
+  .cluster-form { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+@media (max-width: 560px) {
+  .composer-chip span, .composer-hint { display: none; }
+  .composer-chip { padding: 6px 9px; }
+  .field-row { grid-template-columns: 1fr; gap: 0; }
+}
