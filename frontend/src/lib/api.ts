@@ -70,6 +70,19 @@ export const api = {
   selectModel: (provider: string, model: string) =>
     post<AppSettings>('/api/providers/select', { provider, model }),
 
+  cluster: {
+    status: () => request<import('../types').ClusterStatus>('/api/cluster/status'),
+    nodes: () => request<{ nodes: import('../types').ClusterNode[] }>('/api/cluster/nodes'),
+    jobs: () => request<{ jobs: import('../types').ClusterJob[] }>('/api/cluster/jobs'),
+    log: (id: string, offset: number) =>
+      request<{ text: string; offset: number; status: string }>(
+        `/api/cluster/jobs/${encodeURIComponent(id)}/log?offset=${offset}`),
+    cancel: (id: string) => post<{ cancelled: boolean }>(`/api/cluster/jobs/${encodeURIComponent(id)}/cancel`, {}),
+    download: (id: string) => post<{ path: string }>(`/api/cluster/jobs/${encodeURIComponent(id)}/download`, {}),
+    finetune: (req: import('../types').FineTuneRequest) =>
+      post<{ jobs: import('../types').ClusterJob[] }>('/api/cluster/finetune', req),
+  },
+
   tree: () => request<{ tree: TreeNode | null; truncated: boolean; workspace?: string | null }>('/api/tree'),
   readFile: (path: string) =>
     request<{ content: string; path: string; total_lines: number }>(

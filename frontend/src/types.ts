@@ -185,3 +185,46 @@ export interface Attachment {
   base64: string
   isText: boolean
 }
+
+export interface ClusterJob {
+  id: string
+  name: string
+  status: string
+  url: string
+  created_at?: string | null
+  gpus?: number | null
+  nodes?: number | null
+  command?: string | null
+  error?: string | null
+}
+
+export interface ClusterNode {
+  name?: string
+  hostname?: string
+  status?: string
+  gpus?: number | { name?: string }[]
+  gpu_name?: string
+  [key: string]: unknown
+}
+
+export interface ClusterStatus {
+  installed: boolean
+  configured: boolean
+  url?: string
+  detail?: string
+  me?: Record<string, unknown>
+  usage?: Record<string, unknown>
+  checkpoints?: string[]
+}
+
+export interface FineTuneRequest {
+  name: string
+  config: 'small' | 'medium' | 'large'
+  base: string
+  steps: number
+  lr: number
+  gpus: number
+  time_min: number
+  sweep_lr: number[]
+  sweep_steps: number[]
+}
