@@ -213,13 +213,13 @@ export function SettingsDialog({
                     </div>
                   )}
 
-                  {(spec?.id === 'custom' || spec?.id === 'ollama' || spec?.id === 'lmstudio') && (
+                  {(spec?.id === 'custom' || spec?.id === 'ollama' || spec?.id === 'lmstudio' || spec?.id === 'clusterone') && (
                     <div className="field">
                       <label htmlFor="baseurl">Base URL</label>
                       <input
                         id="baseurl"
                         value={baseDraft}
-                        placeholder="http://localhost:11434/v1"
+                        placeholder={spec?.id === 'clusterone' ? 'https://your-cluster/api/v1/openai/v1' : 'http://localhost:11434/v1'}
                         onChange={(e) => setBaseDraft(e.target.value)}
                       />
                     </div>
